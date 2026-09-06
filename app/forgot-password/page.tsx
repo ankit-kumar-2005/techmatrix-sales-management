@@ -1,6 +1,6 @@
 import { AuthShell } from "@/features/auth/components/auth-shell";
 import { ForgotPasswordForm } from "@/features/auth/components/forgot-password-form";
-import { MessageBanner } from "@/features/auth/components/message-banner";
+import { MessageBanner } from "@/components/shared/message-banner";
 
 type ForgotPasswordPageProps = {
   searchParams: Promise<{ error?: string }>;

@@ -6,7 +6,8 @@ import { createClient } from "@/lib/supabase/client";
 import { forgotPasswordSchema } from "../schemas";
 import { getFieldErrors } from "../lib/get-field-errors";
 import { mapAuthErrorMessage } from "../lib/map-auth-error";
-import { FormField } from "./form-field";
+import { FormField } from "@/components/shared/form-field";
+import { MessageBanner } from "@/components/shared/message-banner";
 
 const GENERIC_SUCCESS_MESSAGE =
   "If an account exists for this email, a password reset link has been sent. Please check your email.";
@@ -68,16 +69,8 @@ export function ForgotPasswordForm() {
         disabled={isSubmitting}
       />
 
-      {formError ? (
-        <p role="alert" className="text-sm text-red-600">
-          {formError}
-        </p>
-      ) : null}
-      {infoMessage ? (
-        <p role="status" className="text-sm text-emerald-600">
-          {infoMessage}
-        </p>
-      ) : null}
+      {formError ? <MessageBanner tone="error">{formError}</MessageBanner> : null}
+      {infoMessage ? <MessageBanner tone="success">{infoMessage}</MessageBanner> : null}
 
       <button
         type="submit"

@@ -47,12 +47,21 @@ export const loginSchema = z.object({
 });
 
 /**
- * Sign up is email-only: a verification link confirms the address first,
- * and the real password is set afterward (see newPasswordSchema), on
- * /set-password.
+ * Sign up collects email + phone (required) + company name (optional) —
+ * a verification link confirms the address first, and the real password
+ * is set afterward (see newPasswordSchema), on /set-password, at which
+ * point the customer record is created from phone/companyName (carried
+ * through email verification via Supabase's user_metadata, since the
+ * verification link is often opened in a different browser/tab).
  */
 export const signUpSchema = z.object({
   email: emailSchema,
+  phone: z.string().trim().min(1, "Phone is required.").max(30),
+  companyName: z
+    .string()
+    .trim()
+    .optional()
+    .transform((value) => (value ? value : undefined)),
 });
 
 export const forgotPasswordSchema = z.object({

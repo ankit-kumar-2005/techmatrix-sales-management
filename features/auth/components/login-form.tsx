@@ -2,16 +2,16 @@
 
 import { useState, type FormEvent } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { loginSchema } from "../schemas";
 import { getFieldErrors } from "../lib/get-field-errors";
 import { mapAuthErrorMessage } from "../lib/map-auth-error";
-import { FormField } from "./form-field";
+import { FormField } from "@/components/shared/form-field";
 import { PasswordField } from "./password-field";
+import { MessageBanner } from "@/components/shared/message-banner";
+import { LockIcon, MailIcon } from "@/features/sales-management/components/icons";
 
 export function LoginForm() {
-  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -41,8 +41,16 @@ export function LoginForm() {
         return;
       }
 
-      router.push("/profile");
-      router.refresh();
+      // /sales-management's layout does the actual (server-side)
+      // customer-membership check and redirects to /signup if the
+      // user somehow has none — see CLAUDE.md Section H. A hard
+      // navigation (not router.push + router.refresh) is deliberate
+      // here: the App Router's client-side Router Cache can otherwise
+      // serve a stale RSC payload for this auth-gated route right after
+      // the session changes, which looked like "login redirects back
+      // to signup" even though the account was fine.
+      // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- intentional hard navigation, see comment above
+      window.location.href = "/sales-management";
     } catch {
       setFormError("Something went wrong. Please try again.");
     } finally {
@@ -60,6 +68,7 @@ export function LoginForm() {
         onChange={(event) => setEmail(event.target.value)}
         error={fieldErrors.email}
         disabled={isSubmitting}
+        icon={<MailIcon className="h-4 w-4" />}
       />
       <div className="flex flex-col gap-1.5">
         <PasswordField
@@ -69,6 +78,7 @@ export function LoginForm() {
           onChange={(event) => setPassword(event.target.value)}
           error={fieldErrors.password}
           disabled={isSubmitting}
+          icon={<LockIcon className="h-4 w-4" />}
         />
         <Link
           href="/forgot-password"
@@ -78,11 +88,7 @@ export function LoginForm() {
         </Link>
       </div>
 
-      {formError ? (
-        <p role="alert" className="text-sm text-red-600">
-          {formError}
-        </p>
-      ) : null}
+      {formError ? <MessageBanner tone="error">{formError}</MessageBanner> : null}
 
       <button
         type="submit"

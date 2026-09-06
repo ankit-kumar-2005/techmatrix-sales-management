@@ -1,6 +1,8 @@
 import { AuthShell } from "@/features/auth/components/auth-shell";
+import { MobileNavDrawer } from "@/components/shared/mobile-nav-drawer";
 import { LoginForm } from "@/features/auth/components/login-form";
-import { MessageBanner } from "@/features/auth/components/message-banner";
+import { MessageBanner } from "@/components/shared/message-banner";
+import { SiteFooter } from "@/features/marketing/components/site-footer";
 
 const SUCCESS_MESSAGES: Record<string, string> = {
   password_created: "Your password has been created successfully. Please log in to continue.",
@@ -16,9 +18,17 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
   const successText = message ? SUCCESS_MESSAGES[message] : undefined;
 
   return (
-    <AuthShell title="Welcome back" description="Log in to your Techmatrix Sales Management account.">
-      {successText ? <MessageBanner tone="success">{successText}</MessageBanner> : null}
-      <LoginForm />
-    </AuthShell>
+    <>
+      <MobileNavDrawer />
+      <AuthShell
+        title="Welcome back"
+        description="Log in to your Techmatrix Sales Management account."
+        hideLogo
+      >
+        {successText ? <MessageBanner tone="success">{successText}</MessageBanner> : null}
+        <LoginForm />
+      </AuthShell>
+      <SiteFooter />
+    </>
   );
 }

@@ -8,6 +8,7 @@ import { getFieldErrors } from "../lib/get-field-errors";
 import { mapAuthErrorMessage } from "../lib/map-auth-error";
 import { PasswordField } from "./password-field";
 import { PasswordRequirements } from "./password-requirements";
+import { MessageBanner } from "@/components/shared/message-banner";
 
 type NewPasswordFormProps = {
   /** Button label while idle, e.g. "Set Password" or "Reset Password". */
@@ -90,11 +91,7 @@ export function NewPasswordForm({ submitLabel, submittingLabel, successMessageKe
         disabled={isSubmitting}
       />
 
-      {formError ? (
-        <p role="alert" className="text-sm text-red-600">
-          {formError}
-        </p>
-      ) : null}
+      {formError ? <MessageBanner tone="error">{formError}</MessageBanner> : null}
 
       <button
         type="submit"

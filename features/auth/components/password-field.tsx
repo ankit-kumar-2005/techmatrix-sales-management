@@ -1,13 +1,16 @@
 "use client";
 
-import { useId, useState, type InputHTMLAttributes } from "react";
+import { useId, useState, type InputHTMLAttributes, type ReactNode } from "react";
+import { EyeIcon, EyeOffIcon } from "@/features/sales-management/components/icons";
 
 type PasswordFieldProps = Omit<InputHTMLAttributes<HTMLInputElement>, "type"> & {
   label: string;
   error?: string;
+  /** Optional leading icon rendered inside the input, left-aligned. */
+  icon?: ReactNode;
 };
 
-export function PasswordField({ label, error, id, ...inputProps }: PasswordFieldProps) {
+export function PasswordField({ label, error, id, icon, className, ...inputProps }: PasswordFieldProps) {
   const generatedId = useId();
   const inputId = id ?? generatedId;
   const errorId = `${inputId}-error`;
@@ -19,23 +22,31 @@ export function PasswordField({ label, error, id, ...inputProps }: PasswordField
         {label}
       </label>
       <div className="relative">
+        {icon ? (
+          <span className="pointer-events-none absolute inset-y-0 left-3.5 flex items-center text-neutral-400">
+            {icon}
+          </span>
+        ) : null}
         <input
           id={inputId}
           type={visible ? "text" : "password"}
           aria-invalid={Boolean(error)}
           aria-describedby={error ? errorId : undefined}
-          className={`w-full rounded-lg border px-3.5 py-2.5 pr-16 text-sm text-neutral-900 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-500/30 disabled:cursor-not-allowed disabled:bg-neutral-100 ${
-            error ? "border-red-400" : "border-neutral-300"
+          className={`w-full rounded-lg border py-2.5 pr-10 text-sm text-neutral-900 outline-none transition-colors focus:border-sky-500 focus:ring-2 focus:ring-sky-500/30 disabled:cursor-not-allowed disabled:bg-neutral-100 disabled:hover:border-neutral-300 ${
+            icon ? "pl-10" : "pl-3.5"
+          } ${error ? "border-red-400 hover:border-red-400" : "border-neutral-300 hover:border-neutral-400"} ${
+            className ?? ""
           }`}
           {...inputProps}
         />
         <button
           type="button"
           onClick={() => setVisible((v) => !v)}
-          className="absolute inset-y-0 right-0 px-3 text-xs font-semibold text-sky-600 hover:text-sky-700"
+          aria-label={visible ? "Hide password" : "Show password"}
           aria-pressed={visible}
+          className="absolute inset-y-0 right-0 flex items-center rounded-r-lg px-3 text-neutral-400 transition-colors hover:text-sky-600"
         >
-          {visible ? "Hide" : "Show"}
+          {visible ? <EyeOffIcon className="h-[18px] w-[18px]" /> : <EyeIcon className="h-[18px] w-[18px]" />}
         </button>
       </div>
       {error ? (

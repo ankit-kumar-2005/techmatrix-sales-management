@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { AuthShell } from "@/features/auth/components/auth-shell";
-import { NewPasswordForm } from "@/features/auth/components/new-password-form";
+import { SetPasswordForm } from "@/features/auth/components/set-password-form";
 
 /**
  * Reachable only via a valid session, which at this point can only exist
@@ -24,12 +24,9 @@ export default async function SetPasswordPage() {
     <AuthShell
       title="Set your password"
       description={`Email verified for ${user.email}. Choose a password to finish creating your account.`}
+      step={{ current: 2, total: 2 }}
     >
-      <NewPasswordForm
-        submitLabel="Set Password"
-        submittingLabel="Setting password..."
-        successMessageKey="password_created"
-      />
+      <SetPasswordForm />
     </AuthShell>
   );
 }
