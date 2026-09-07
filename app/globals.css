@@ -51,10 +51,13 @@ body {
 /* Minimal, unobtrusive scrollbar for the sidebar's own nav list — it
    scrolls independently between the pinned logo header and pinned
    Settings footer, and should look clean even when there's nothing to
-   scroll. */
+   scroll. Colors are light-on-transparent because the sidebar itself is
+   a fixed dark gradient (slate-900 -> indigo-950), not theme-dependent —
+   this isn't the same light/dark mode the rest of the app's
+   `prefers-color-scheme` block above responds to. */
 .sidebar-scroll {
   scrollbar-width: thin;
-  scrollbar-color: #d4d4d4 transparent;
+  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 }
 
 .sidebar-scroll::-webkit-scrollbar {
@@ -66,12 +69,12 @@ body {
 }
 
 .sidebar-scroll::-webkit-scrollbar-thumb {
-  background-color: #d4d4d4;
+  background-color: rgba(255, 255, 255, 0.2);
   border-radius: 9999px;
 }
 
 .sidebar-scroll::-webkit-scrollbar-thumb:hover {
-  background-color: #a3a3a3;
+  background-color: rgba(255, 255, 255, 0.35);
 }
 
 /* Without this, Chromium/Edge on Windows still renders the classic

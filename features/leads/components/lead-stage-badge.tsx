@@ -1,20 +1,23 @@
-import type { LeadStage } from "@/types/lead";
+import type { CustomerLeadStage } from "@/types/lead";
+import { stageBadgeClasses } from "../lib/stage-colors";
+import { LockIcon } from "@/features/sales-management/components/icons";
 
-const STAGE_STYLES: Record<LeadStage, string> = {
-  New: "bg-neutral-100 text-neutral-700",
-  Contacted: "bg-sky-50 text-sky-700",
-  Qualified: "bg-amber-50 text-amber-700",
-  Proposal: "bg-violet-50 text-violet-700",
-  Won: "bg-emerald-50 text-emerald-700",
-  Lost: "bg-red-50 text-red-700",
+type LeadStageBadgeProps = {
+  stage: Pick<CustomerLeadStage, "stage" | "is_closed" | "display_order">;
+  /** Shows a small lock glyph — used on the lead's own badge (not the
+   *  stage-config list) to make a closed/locked lead visually obvious
+   *  in List/Board views, per "closed leads should be read-only" /
+   *  "closed stages should be visually identifiable." */
+  showLockedIndicator?: boolean;
 };
 
-export function LeadStageBadge({ stage }: { stage: LeadStage }) {
+export function LeadStageBadge({ stage, showLockedIndicator = false }: LeadStageBadgeProps) {
   return (
     <span
-      className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 ring-inset ring-black/5 ${STAGE_STYLES[stage]}`}
+      className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 ring-inset ring-black/5 ${stageBadgeClasses(stage)}`}
     >
-      {stage}
+      {showLockedIndicator && stage.is_closed ? <LockIcon className="h-2.5 w-2.5" /> : null}
+      {stage.stage}
     </span>
   );
 }

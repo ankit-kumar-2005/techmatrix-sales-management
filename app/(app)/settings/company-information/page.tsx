@@ -2,6 +2,8 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentMembership } from "@/features/customers/lib/get-current-membership";
 import { CompanyInformationForm } from "@/features/customers/components/company-information-form";
+import { LeadStageSettings } from "@/features/leads/components/lead-stage-settings";
+import { getLeadStagesForCustomer } from "@/features/leads/lib/get-lead-stages";
 
 export default async function CompanyInformationPage() {
   const supabase = await createClient();
@@ -17,6 +19,8 @@ export default async function CompanyInformationPage() {
   if (!membership) {
     redirect("/signup");
   }
+
+  const stages = await getLeadStagesForCustomer(supabase, membership.customer.id);
 
   return (
     <div className="flex max-w-4xl flex-col gap-6">
@@ -41,6 +45,8 @@ export default async function CompanyInformationPage() {
       </div>
 
       <CompanyInformationForm customer={membership.customer} canEdit={membership.isPrimaryAdmin} />
+
+      <LeadStageSettings stages={stages} canConfigure={membership.role === "ADMIN"} />
     </div>
   );
 }

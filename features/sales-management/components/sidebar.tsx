@@ -53,10 +53,10 @@ const SETTINGS_ITEMS: LinkedNavItem[] = [
 ];
 
 const navLinkClass = (isActive: boolean) =>
-  `relative flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-all duration-200 focus-visible:ring-2 focus-visible:ring-sky-500/40 focus-visible:outline-none ${
+  `relative flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-all duration-200 focus-visible:ring-2 focus-visible:ring-sky-400/60 focus-visible:outline-none ${
     isActive
-      ? "bg-sky-50 font-semibold text-sky-700 ring-1 ring-sky-100"
-      : "font-medium text-neutral-600 hover:bg-neutral-50 hover:text-neutral-900"
+      ? "bg-gradient-to-r from-blue-600 to-violet-600 font-semibold text-white shadow-lg shadow-blue-900/40"
+      : "font-medium text-slate-300 hover:bg-white/10 hover:text-white"
   }`;
 
 type SidebarProps = {
@@ -81,24 +81,60 @@ export function Sidebar({ customerName, userEmail, userAvatarUrl, onNavigate }: 
     // from a parent) means this component's height is correct regardless
     // of which wrapper (desktop sticky aside, mobile off-canvas drawer)
     // it's rendered inside.
-    <div className="flex h-dvh flex-col bg-white">
-      <div className="flex shrink-0 items-center gap-2.5 border-b border-neutral-100 px-5 py-5">
-        <Image
-          src="/techmatrix-logo.png"
-          alt="Techmatrix"
-          width={516}
-          height={387}
-          className="h-8 w-auto shrink-0"
+    <div className="flex h-dvh flex-col bg-gradient-to-b from-slate-900 to-indigo-950">
+      <div className="relative shrink-0 overflow-hidden">
+        {/* Purely decorative depth glow behind the header — static, low
+            opacity, clipped to this wrapper so it can never bleed into
+            the scrolling nav list below or cause overflow elsewhere. */}
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute -top-12 -left-10 h-40 w-40 rounded-full bg-blue-600/20 blur-3xl"
         />
-        <div className="min-w-0 leading-tight">
-          <p className="truncate text-sm font-bold text-neutral-900">Techmatrix</p>
-          <p className="truncate text-[10px] font-semibold uppercase tracking-wide text-sky-600">
-            Sales Management
-          </p>
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute -top-8 right-0 h-32 w-32 rounded-full bg-violet-600/20 blur-3xl"
+        />
+
+        <div className="relative flex items-center gap-2.5 px-5 py-5">
+          {/* Same asset the home page's shared Logo component uses
+              (components/shared/logo.tsx) — techmatrix-mark.png, the
+              cloud icon cropped down from the full wordmark, rather than
+              this sidebar's own separate wordmark image. Still an opaque
+              RGB PNG (no alpha channel, no image-editing tool available
+              in this environment to add one), so it keeps the same
+              intentional rounded white badge treatment — the crop is
+              much tighter around the mark than the full wordmark was,
+              so only its four corners are white now, not a whole
+              rectangle. Not swapped in as the shared <Logo> component
+              itself: that component hardcodes light-theme text colors
+              (neutral-900/sky-600), which would be unreadable against
+              this sidebar's dark gradient — the dark-theme text labels
+              here stay hand-rolled. */}
+          <div className="flex shrink-0 items-center justify-center rounded-xl bg-white p-2 shadow-lg shadow-black/20 ring-1 ring-white/20">
+            <Image
+              src="/techmatrix-mark.png"
+              alt="Techmatrix"
+              width={122}
+              height={72}
+              className="h-7 w-auto"
+            />
+          </div>
+          <div className="min-w-0 leading-tight">
+            <p className="truncate text-sm font-bold text-white">Techmatrix</p>
+            <p className="truncate text-[10px] font-semibold uppercase tracking-wide text-sky-400">
+              Sales Management
+            </p>
+          </div>
         </div>
+
+        {/* Soft gradient-fade divider instead of a flat solid line. */}
+        <div
+          aria-hidden="true"
+          className="relative h-px w-full bg-gradient-to-r from-transparent via-white/10 to-transparent"
+        />
       </div>
 
-      <p className="shrink-0 truncate px-5 pt-4 pb-1 text-xs font-medium text-neutral-400" title={customerName}>
+      <p className="shrink-0 truncate px-5 pt-4 pb-1 text-xs font-medium text-slate-400" title={customerName}>
         {customerName}
       </p>
 
@@ -120,12 +156,12 @@ export function Sidebar({ customerName, userEmail, userAvatarUrl, onNavigate }: 
             if (!item.href) {
               return (
                 <li key={item.label}>
-                  <span className="flex cursor-not-allowed items-center justify-between gap-2 rounded-lg px-3 py-2 text-sm text-neutral-400">
+                  <span className="flex cursor-not-allowed items-center justify-between gap-2 rounded-lg px-3 py-2 text-sm text-slate-500">
                     <span className="flex items-center gap-2.5">
                       <Icon className="h-4.5 w-4.5" />
                       {item.label}
                     </span>
-                    <span className="rounded-full bg-neutral-100 px-2.5 py-1 text-[10px] font-semibold tracking-wider text-neutral-400 uppercase ring-1 ring-neutral-200/60">
+                    <span className="rounded-full bg-white/10 px-2.5 py-1 text-[10px] font-semibold tracking-wider text-slate-300 uppercase ring-1 ring-white/10">
                       Soon
                     </span>
                   </span>
@@ -136,9 +172,6 @@ export function Sidebar({ customerName, userEmail, userAvatarUrl, onNavigate }: 
             return (
               <li key={item.label}>
                 <Link href={item.href} onClick={onNavigate} aria-current={isActive ? "page" : undefined} className={navLinkClass(isActive)}>
-                  {isActive ? (
-                    <span className="absolute inset-y-1 left-0 w-1 rounded-full bg-sky-600" aria-hidden="true" />
-                  ) : null}
                   <Icon className="h-4.5 w-4.5" />
                   {item.label}
                 </Link>
@@ -147,30 +180,27 @@ export function Sidebar({ customerName, userEmail, userAvatarUrl, onNavigate }: 
           })}
         </ul>
 
-        <div className="mt-6 border-t border-neutral-100 pt-4">
-          <p className="px-3 pb-2 text-[10px] font-semibold tracking-wider text-neutral-400 uppercase">Settings</p>
+        <div className="mt-6 border-t border-white/10 pt-4">
+          <p className="px-3 pb-2 text-[10px] font-semibold tracking-wider text-slate-400 uppercase">Settings</p>
 
           <button
             type="button"
             onClick={() => setSettingsOpen((open) => !open)}
             aria-expanded={settingsOpen}
             aria-controls="sidebar-settings-menu"
-            className={`relative flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-200 focus-visible:ring-2 focus-visible:ring-sky-500/40 focus-visible:outline-none ${
+            className={`relative flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-200 focus-visible:ring-2 focus-visible:ring-sky-400/60 focus-visible:outline-none ${
               isSettingsRoute
-                ? "bg-sky-50 text-sky-700 ring-1 ring-sky-100"
-                : "text-neutral-600 hover:bg-neutral-50 hover:text-neutral-900"
+                ? "bg-gradient-to-r from-blue-600 to-violet-600 text-white shadow-lg shadow-blue-900/40"
+                : "text-slate-300 hover:bg-white/10 hover:text-white"
             }`}
           >
-            {isSettingsRoute ? (
-              <span className="absolute inset-y-1 left-0 w-1 rounded-full bg-sky-600" aria-hidden="true" />
-            ) : null}
             <SettingsIcon className="h-4.5 w-4.5" />
             Settings
           </button>
 
           {settingsOpen ? (
             <div className="relative mt-1 ml-[1.15rem] pl-4">
-              <span className="absolute top-0 bottom-0 left-0 w-px bg-neutral-200" aria-hidden="true" />
+              <span className="absolute top-0 bottom-0 left-0 w-px bg-white/10" aria-hidden="true" />
               <ul id="sidebar-settings-menu" className="flex flex-col gap-1">
                 {SETTINGS_ITEMS.map((item) => {
                   const isActive = pathname === item.href;
@@ -183,9 +213,6 @@ export function Sidebar({ customerName, userEmail, userAvatarUrl, onNavigate }: 
                         aria-current={isActive ? "page" : undefined}
                         className={navLinkClass(isActive)}
                       >
-                        {isActive ? (
-                          <span className="absolute inset-y-1 left-0 w-1 rounded-full bg-sky-600" aria-hidden="true" />
-                        ) : null}
                         <Icon className="h-4.5 w-4.5" />
                         {item.label}
                       </Link>
@@ -200,13 +227,13 @@ export function Sidebar({ customerName, userEmail, userAvatarUrl, onNavigate }: 
 
       {/* Pinned account row — its own zone, visually separated by the
           border above, so it can never overlap the Settings sub-items. */}
-      <div className="shrink-0 border-t border-neutral-100 p-3">
+      <div className="shrink-0 border-t border-white/10 bg-white/5 p-3">
         <Link
           href="/settings/profile"
           onClick={onNavigate}
-          className="flex items-center gap-2.5 rounded-lg p-2 transition-colors duration-150 hover:bg-neutral-50 focus-visible:ring-2 focus-visible:ring-sky-500/40 focus-visible:outline-none"
+          className="flex items-center gap-2.5 rounded-lg p-2 transition-colors duration-150 hover:bg-white/10 focus-visible:ring-2 focus-visible:ring-sky-400/60 focus-visible:outline-none"
         >
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-neutral-900 text-xs font-semibold text-white">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-blue-600 to-violet-600 text-xs font-semibold text-white">
             {userAvatarUrl ? (
               // eslint-disable-next-line @next/next/no-img-element -- arbitrary user-uploaded Storage URL, not a build-time-known image domain
               <img src={userAvatarUrl} alt="" className="h-full w-full object-cover" />
@@ -214,8 +241,8 @@ export function Sidebar({ customerName, userEmail, userAvatarUrl, onNavigate }: 
               userEmail.charAt(0).toUpperCase()
             )}
           </span>
-          <span className="min-w-0 flex-1 truncate text-xs font-medium text-neutral-600">{userEmail}</span>
-          <ChevronRightIcon className="h-3.5 w-3.5 shrink-0 text-neutral-400" aria-hidden="true" />
+          <span className="min-w-0 flex-1 truncate text-xs font-medium text-slate-200">{userEmail}</span>
+          <ChevronRightIcon className="h-3.5 w-3.5 shrink-0 text-slate-500" aria-hidden="true" />
         </Link>
       </div>
     </div>

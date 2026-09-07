@@ -1,12 +1,29 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import {
+  type ColumnDef,
+  type SortingState,
+  flexRender,
+  getCoreRowModel,
+  getSortedRowModel,
+  useReactTable,
+} from "@tanstack/react-table";
 import { LeadStageBadge } from "./lead-stage-badge";
-import { SearchIcon, LeadCaptureIcon, ChevronDownIcon } from "@/features/sales-management/components/icons";
+import { EditLeadDialog } from "./edit-lead-dialog";
+import {
+  SearchIcon,
+  LeadCaptureIcon,
+  ChevronDownIcon,
+  ChevronUpIcon,
+  LockIcon,
+  PencilIcon,
+} from "@/features/sales-management/components/icons";
 import { currencyFormatter, dateFormatter } from "@/utils/format";
-import { LEAD_SOURCES, LEAD_STAGES } from "../schemas";
-import type { Lead, LeadStage } from "@/types/lead";
-import type { TeamDirectoryEntry } from "@/types/lead";
+import { LEAD_SOURCES } from "../schemas";
+import { stageDotClass } from "../lib/stage-colors";
+import type { CustomerLeadStage, Lead, TeamDirectoryEntry } from "@/types/lead";
+import type { CustomerRole } from "@/types/customer";
 
 const UNASSIGNED = "unassigned";
 
@@ -17,7 +34,22 @@ const selectControlClass = `${controlClass} w-full appearance-none pr-9`;
 
 type PipelineViewProps = {
   leads: Lead[];
+  /** All of the customer's stages (active and inactive), ordered by
+   *  display_order — the filter dropdown narrows to Active ones itself
+   *  (see Section 35 of the spec), but List/Board/badges use the full
+   *  set so a lead sitting in a since-deactivated stage still resolves
+   *  and displays correctly. */
+  stages: CustomerLeadStage[];
   owners: TeamDirectoryEntry[];
+  role: CustomerRole;
+  currentUserEmail: string;
+  /** The caller's own customer_users.id — used only to decide, per row,
+   *  whether the List View's Edit action is shown at all for a non-admin
+   *  (they may only edit a lead they themselves own; matches the
+   *  "owners or admins can update a lead" RLS policy exactly). This is a
+   *  UX decision only — updateLeadAction re-checks the same rule against
+   *  the database regardless. */
+  currentUserCustomerUserId: string;
 };
 
 /**
@@ -31,12 +63,16 @@ type PipelineViewProps = {
  * prop from the page — only this toolbar's own List/Board content reacts
  * to the filters, matching the reference layout.
  */
-export function PipelineView({ leads, owners }: PipelineViewProps) {
+export function PipelineView({ leads, stages, owners, role, currentUserEmail, currentUserCustomerUserId }: PipelineViewProps) {
   const [view, setView] = useState<"list" | "board">("list");
   const [search, setSearch] = useState("");
   const [stageFilter, setStageFilter] = useState("");
   const [ownerFilter, setOwnerFilter] = useState("");
   const [sourceFilter, setSourceFilter] = useState("");
+  const [editingLead, setEditingLead] = useState<Lead | null>(null);
+
+  const stagesById = useMemo(() => new Map(stages.map((stage) => [stage.id, stage])), [stages]);
+  const activeStages = useMemo(() => stages.filter((stage) => stage.status === "Active"), [stages]);
 
   const ownerEmailById = useMemo(
     () => new Map(owners.map((owner) => [owner.customer_user_id, owner.email])),
@@ -62,7 +98,7 @@ export function PipelineView({ leads, owners }: PipelineViewProps) {
   const filteredLeads = useMemo(() => {
     const query = search.trim().toLowerCase();
     return leads.filter((lead) => {
-      if (stageFilter && lead.stage !== stageFilter) return false;
+      if (stageFilter && lead.stage_id !== stageFilter) return false;
       if (ownerFilter === UNASSIGNED && lead.owner_id) return false;
       if (ownerFilter && ownerFilter !== UNASSIGNED && lead.owner_id !== ownerFilter) return false;
       if (sourceFilter && (lead.source ?? "") !== sourceFilter) return false;
@@ -79,6 +115,7 @@ export function PipelineView({ leads, owners }: PipelineViewProps) {
   }
 
   return (
+    <>
     <div className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-black/5">
       {/* Below sm: everything stacks full-width (no wrapping concern —
           it's already one column). From sm: up, this becomes a single
@@ -95,7 +132,7 @@ export function PipelineView({ leads, owners }: PipelineViewProps) {
               type="button"
               onClick={() => setView("list")}
               className={`rounded-full px-4 py-2 text-sm font-semibold transition-all duration-200 focus-visible:ring-2 focus-visible:ring-sky-500/40 focus-visible:outline-none ${
-                view === "list" ? "bg-white text-neutral-900 shadow-sm" : "text-neutral-500 hover:text-neutral-700"
+                view === "list" ? "bg-sky-600 text-white shadow-sm" : "text-neutral-500 hover:text-neutral-700"
               }`}
             >
               List
@@ -104,7 +141,7 @@ export function PipelineView({ leads, owners }: PipelineViewProps) {
               type="button"
               onClick={() => setView("board")}
               className={`rounded-full px-4 py-2 text-sm font-semibold transition-all duration-200 focus-visible:ring-2 focus-visible:ring-sky-500/40 focus-visible:outline-none ${
-                view === "board" ? "bg-white text-neutral-900 shadow-sm" : "text-neutral-500 hover:text-neutral-700"
+                view === "board" ? "bg-sky-600 text-white shadow-sm" : "text-neutral-500 hover:text-neutral-700"
               }`}
             >
               Pipeline board
@@ -129,9 +166,9 @@ export function PipelineView({ leads, owners }: PipelineViewProps) {
               className={`${selectControlClass} truncate`}
             >
               <option value="">All stages</option>
-              {LEAD_STAGES.map((stage) => (
-                <option key={stage} value={stage}>
-                  {stage}
+              {activeStages.map((stage) => (
+                <option key={stage.id} value={stage.id}>
+                  {stage.stage}
                 </option>
               ))}
             </select>
@@ -208,89 +245,280 @@ export function PipelineView({ leads, owners }: PipelineViewProps) {
           )}
         </div>
       ) : view === "list" ? (
-        <ListView leads={filteredLeads} ownerEmailById={ownerEmailById} />
+        <ListView
+          leads={filteredLeads}
+          stagesById={stagesById}
+          ownerEmailById={ownerEmailById}
+          role={role}
+          currentUserCustomerUserId={currentUserCustomerUserId}
+          onEdit={setEditingLead}
+        />
       ) : (
-        <BoardView leads={filteredLeads} ownerEmailById={ownerEmailById} />
+        <BoardView
+          leads={filteredLeads}
+          // Every active stage gets a column, even an empty one (it's
+          // ready to receive a lead) — an Inactive stage only keeps its
+          // column while it still has leads in it, so retired stages
+          // with no history don't pile up on the board forever, while
+          // ones with real historical leads never lose visibility.
+          stages={stages.filter(
+            (stage) => stage.status === "Active" || filteredLeads.some((lead) => lead.stage_id === stage.id),
+          )}
+          ownerEmailById={ownerEmailById}
+        />
       )}
     </div>
+
+    {editingLead ? (
+      <EditLeadDialog
+        key={editingLead.id}
+        lead={editingLead}
+        stages={stages}
+        owners={owners}
+        role={role}
+        currentUserEmail={currentUserEmail}
+        onClose={() => setEditingLead(null)}
+      />
+    ) : null}
+    </>
   );
 }
 
-type ViewProps = {
+type ListViewProps = {
   leads: Lead[];
+  stagesById: Map<string, CustomerLeadStage>;
   ownerEmailById: Map<string, string>;
+  role: CustomerRole;
+  currentUserCustomerUserId: string;
+  onEdit: (lead: Lead) => void;
 };
 
-function ListView({ leads, ownerEmailById }: ViewProps) {
+/**
+ * The List View's actual data table — TanStack Table (useReactTable)
+ * over the same already-filtered `leads` array PipelineView has always
+ * computed (Search/Stage/Owner/Source filtering is untouched, still
+ * plain client-side filtering upstream in PipelineView; this component
+ * only owns how the resulting rows are rendered and sorted). Column
+ * defs are built with useMemo so cell renderers can close over
+ * stagesById/ownerEmailById/role/currentUserCustomerUserId/onEdit
+ * without recreating on every render.
+ *
+ * Note: this still fetches and holds every one of the customer's leads
+ * in memory (getLeadsForCustomer has no pagination) — swapping in a
+ * real table library doesn't by itself address CLAUDE.md Section O's
+ * server-side-pagination guidance for large lead lists; that's a
+ * separate, larger change.
+ */
+function ListView({ leads, stagesById, ownerEmailById, role, currentUserCustomerUserId, onEdit }: ListViewProps) {
+  const [sorting, setSorting] = useState<SortingState>([]);
+
+  const columns = useMemo<ColumnDef<Lead>[]>(
+    () => [
+      {
+        id: "lead",
+        header: "Lead",
+        accessorFn: (lead) => lead.company || lead.contact_name,
+        cell: ({ row }) => {
+          const lead = row.original;
+          return (
+            <>
+              <p className="flex items-center gap-1.5 font-medium text-neutral-900">
+                {lead.closed_at ? (
+                  <LockIcon className="h-3 w-3 shrink-0 text-neutral-400" aria-label="Closed — read-only" />
+                ) : null}
+                {lead.company ?? "—"}
+              </p>
+              <p className="text-xs text-neutral-500">{lead.contact_name}</p>
+            </>
+          );
+        },
+      },
+      {
+        id: "stage",
+        header: "Stage",
+        // Sorts by the stage's own display_order — the same order used
+        // everywhere else (filter, board, legend) — never by name.
+        accessorFn: (lead) => stagesById.get(lead.stage_id)?.display_order ?? Number.MAX_SAFE_INTEGER,
+        cell: ({ row }) => {
+          const stage = stagesById.get(row.original.stage_id);
+          return stage ? <LeadStageBadge stage={stage} /> : "—";
+        },
+      },
+      {
+        id: "value",
+        header: "Value",
+        accessorFn: (lead) => lead.deal_value,
+        cell: ({ row }) => {
+          const value = row.original.deal_value;
+          return (
+            <span className="font-medium text-neutral-900">
+              {value === null ? <span className="text-neutral-300">—</span> : currencyFormatter.format(value)}
+            </span>
+          );
+        },
+      },
+      {
+        id: "source",
+        header: "Source",
+        accessorFn: (lead) => lead.source ?? "",
+        cell: ({ row }) => (
+          <span className="text-neutral-600">{row.original.source ?? <span className="text-neutral-300">—</span>}</span>
+        ),
+      },
+      {
+        id: "owner",
+        header: "Owner",
+        accessorFn: (lead) => (lead.owner_id ? (ownerEmailById.get(lead.owner_id) ?? "") : ""),
+        cell: ({ row }) => {
+          const lead = row.original;
+          const ownerEmail = lead.owner_id ? ownerEmailById.get(lead.owner_id) : undefined;
+          const ownerInitial = ownerEmail ? ownerEmail.charAt(0).toUpperCase() : null;
+          return ownerEmail ? (
+            <span className="flex items-center gap-2">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-sky-100 text-[10px] font-semibold text-sky-700 shadow-sm ring-1 ring-sky-200/60">
+                {ownerInitial}
+              </span>
+              <span className="max-w-[10rem] truncate text-neutral-700" title={ownerEmail}>
+                {ownerEmail}
+              </span>
+            </span>
+          ) : (
+            <span className="text-neutral-400">Unassigned</span>
+          );
+        },
+      },
+      {
+        id: "updated",
+        header: "Updated",
+        accessorFn: (lead) => lead.updated_at,
+        cell: ({ row }) => (
+          <span className="text-neutral-500">{dateFormatter.format(new Date(row.original.updated_at))}</span>
+        ),
+      },
+      {
+        id: "next_step",
+        header: "Next Step",
+        accessorFn: (lead) => lead.next_step ?? "",
+        cell: ({ row }) => (
+          <span className="text-neutral-600">{row.original.next_step ?? <span className="text-neutral-300">—</span>}</span>
+        ),
+      },
+      {
+        id: "actions",
+        header: "Actions",
+        enableSorting: false,
+        cell: ({ row }) => {
+          const lead = row.original;
+          const isClosed = Boolean(lead.closed_at);
+          // Matches the "owners or admins can update a lead" RLS policy
+          // exactly — hierarchy-aware SELECT visibility (a manager
+          // seeing their team's leads) does NOT imply edit rights over
+          // leads they don't themselves own; see 20260906120000's design
+          // notes. This is UX only — updateLeadAction re-checks the
+          // same rule server-side.
+          const canEdit = !isClosed && (role === "ADMIN" || lead.owner_id === currentUserCustomerUserId);
+
+          if (canEdit) {
+            return (
+              <button
+                type="button"
+                onClick={() => onEdit(lead)}
+                aria-label={`Edit ${lead.contact_name}`}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-neutral-500 transition-colors hover:bg-neutral-100 hover:text-neutral-900"
+              >
+                <PencilIcon className="h-3.5 w-3.5" />
+              </button>
+            );
+          }
+          if (isClosed) {
+            return (
+              <span
+                title="Closed leads are read-only"
+                className="inline-flex h-8 w-8 items-center justify-center text-neutral-300"
+              >
+                <LockIcon className="h-3.5 w-3.5" />
+              </span>
+            );
+          }
+          return null;
+        },
+      },
+    ],
+    [stagesById, ownerEmailById, role, currentUserCustomerUserId, onEdit],
+  );
+
+  const table = useReactTable({
+    data: leads,
+    columns,
+    state: { sorting },
+    onSortingChange: setSorting,
+    getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+  });
+
   return (
     <div className="overflow-x-auto">
       <table className="w-full min-w-[720px] text-left text-sm">
         <thead>
-          <tr className="border-b border-neutral-100 bg-neutral-50/60 text-xs font-semibold tracking-wider text-neutral-500 uppercase">
-            <th className="px-6 py-3">Lead</th>
-            <th className="px-3 py-3">Stage</th>
-            <th className="px-3 py-3">Value</th>
-            <th className="px-3 py-3">Source</th>
-            <th className="px-3 py-3">Owner</th>
-            <th className="px-3 py-3">Updated</th>
-            <th className="px-3 py-3">Next Step</th>
-          </tr>
+          {table.getHeaderGroups().map((headerGroup) => (
+            <tr
+              key={headerGroup.id}
+              className="border-b border-neutral-100 bg-neutral-50/60 text-xs font-semibold tracking-wider text-neutral-500 uppercase"
+            >
+              {headerGroup.headers.map((header, index) => (
+                <th
+                  key={header.id}
+                  className={`py-3 ${index === 0 ? "px-6" : "px-3"} ${header.column.id === "actions" ? "text-right" : ""}`}
+                >
+                  {header.column.getCanSort() ? (
+                    <button
+                      type="button"
+                      onClick={header.column.getToggleSortingHandler()}
+                      className="inline-flex items-center gap-1 uppercase tracking-wider transition-colors hover:text-neutral-700"
+                    >
+                      {flexRender(header.column.columnDef.header, header.getContext())}
+                      {header.column.getIsSorted() === "asc" ? (
+                        <ChevronUpIcon className="h-3 w-3" />
+                      ) : header.column.getIsSorted() === "desc" ? (
+                        <ChevronDownIcon className="h-3 w-3" />
+                      ) : null}
+                    </button>
+                  ) : (
+                    flexRender(header.column.columnDef.header, header.getContext())
+                  )}
+                </th>
+              ))}
+            </tr>
+          ))}
         </thead>
         <tbody>
-          {leads.map((lead) => {
-            const ownerEmail = lead.owner_id ? ownerEmailById.get(lead.owner_id) : undefined;
-            const ownerInitial = ownerEmail ? ownerEmail.charAt(0).toUpperCase() : null;
-
-            return (
-              <tr key={lead.id} className="border-b border-neutral-50 transition-colors hover:bg-neutral-50">
-                <td className="px-6 py-4">
-                  <p className="font-medium text-neutral-900">{lead.company ?? "—"}</p>
-                  <p className="text-xs text-neutral-500">{lead.contact_name}</p>
+          {table.getRowModel().rows.map((row) => (
+            <tr key={row.id} className="border-b border-neutral-50 transition-colors hover:bg-neutral-50">
+              {row.getVisibleCells().map((cell, index) => (
+                <td
+                  key={cell.id}
+                  className={`py-4 ${index === 0 ? "px-6" : "px-3"} ${cell.column.id === "actions" ? "text-right" : ""}`}
+                >
+                  {flexRender(cell.column.columnDef.cell, cell.getContext())}
                 </td>
-                <td className="px-3 py-4">
-                  <LeadStageBadge stage={lead.stage} />
-                </td>
-                <td className="px-3 py-4 font-medium text-neutral-900">
-                  {lead.deal_value === null ? <span className="text-neutral-300">—</span> : currencyFormatter.format(lead.deal_value)}
-                </td>
-                <td className="px-3 py-4 text-neutral-600">{lead.source ?? <span className="text-neutral-300">—</span>}</td>
-                <td className="px-3 py-4">
-                  {ownerEmail ? (
-                    <span className="flex items-center gap-2">
-                      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-sky-100 text-[10px] font-semibold text-sky-700 shadow-sm ring-1 ring-sky-200/60">
-                        {ownerInitial}
-                      </span>
-                      <span className="max-w-[10rem] truncate text-neutral-700" title={ownerEmail}>
-                        {ownerEmail}
-                      </span>
-                    </span>
-                  ) : (
-                    <span className="text-neutral-400">Unassigned</span>
-                  )}
-                </td>
-                <td className="px-3 py-4 text-neutral-500">{dateFormatter.format(new Date(lead.updated_at))}</td>
-                <td className="px-3 py-4 text-neutral-600">{lead.next_step ?? <span className="text-neutral-300">—</span>}</td>
-              </tr>
-            );
-          })}
+              ))}
+            </tr>
+          ))}
         </tbody>
       </table>
     </div>
   );
 }
 
-const STAGE_DOT_COLORS: Record<LeadStage, string> = {
-  New: "bg-neutral-400",
-  Contacted: "bg-sky-500",
-  Qualified: "bg-amber-500",
-  Proposal: "bg-violet-500",
-  Won: "bg-emerald-500",
-  Lost: "bg-red-500",
+type BoardViewProps = {
+  leads: Lead[];
+  stages: CustomerLeadStage[];
+  ownerEmailById: Map<string, string>;
 };
 
-function BoardView({ leads, ownerEmailById }: ViewProps) {
-  const columns = LEAD_STAGES.map((stage) => {
-    const stageLeads = leads.filter((lead) => lead.stage === stage);
+function BoardView({ leads, stages, ownerEmailById }: BoardViewProps) {
+  const columns = stages.map((stage) => {
+    const stageLeads = leads.filter((lead) => lead.stage_id === stage.id);
     const total = stageLeads.reduce((sum, lead) => sum + Number(lead.deal_value ?? 0), 0);
     return { stage, leads: stageLeads, total };
   });
@@ -298,10 +526,19 @@ function BoardView({ leads, ownerEmailById }: ViewProps) {
   return (
     <div className="flex gap-4 overflow-x-auto p-4 sm:p-6">
       {columns.map(({ stage, leads: stageLeads, total }) => (
-        <div key={stage} className="w-72 shrink-0 rounded-2xl bg-neutral-50 p-3">
+        <div
+          key={stage.id}
+          className={`w-72 shrink-0 rounded-2xl p-3 ${stage.is_closed ? "bg-neutral-100/80" : "bg-neutral-50"}`}
+        >
           <div className="flex items-center gap-1.5 px-1 text-sm font-semibold text-neutral-900">
-            <span className={`h-2 w-2 rounded-full ${STAGE_DOT_COLORS[stage]}`} />
-            {stage}
+            <span className={`h-2 w-2 rounded-full ${stageDotClass(stage)}`} />
+            {stage.stage}
+            {stage.is_closed ? <LockIcon className="h-3 w-3 text-neutral-400" aria-label="Closed stage" /> : null}
+            {stage.status === "Inactive" ? (
+              <span className="ml-auto rounded-full bg-neutral-200 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-neutral-500 uppercase">
+                Inactive
+              </span>
+            ) : null}
           </div>
           <p className="mb-3 px-1 text-xs text-neutral-500">
             {stageLeads.length} · {currencyFormatter.format(total)}
@@ -320,7 +557,13 @@ function BoardView({ leads, ownerEmailById }: ViewProps) {
                     key={lead.id}
                     className="rounded-xl bg-white p-3.5 shadow-sm ring-1 ring-black/5 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md"
                   >
-                    <p className="truncate text-sm font-semibold text-neutral-900" title={lead.company ?? undefined}>
+                    <p
+                      className="flex items-center gap-1.5 truncate text-sm font-semibold text-neutral-900"
+                      title={lead.company ?? undefined}
+                    >
+                      {lead.closed_at ? (
+                        <LockIcon className="h-3 w-3 shrink-0 text-neutral-400" aria-label="Closed — read-only" />
+                      ) : null}
                       {lead.company ?? "—"}
                     </p>
                     <p className="truncate text-xs text-neutral-500" title={lead.contact_name}>

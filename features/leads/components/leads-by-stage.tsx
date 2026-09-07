@@ -1,32 +1,28 @@
-import type { Lead, LeadStage } from "@/types/lead";
-import { LEAD_STAGES } from "../schemas";
-
-const STAGE_DOT_COLORS: Record<LeadStage, string> = {
-  New: "bg-neutral-400",
-  Contacted: "bg-sky-500",
-  Qualified: "bg-amber-500",
-  Proposal: "bg-violet-500",
-  Won: "bg-emerald-500",
-  Lost: "bg-red-500",
-};
+import type { CustomerLeadStage, Lead } from "@/types/lead";
+import { stageDotClass } from "../lib/stage-colors";
 
 type LeadsByStageProps = {
   leads: Lead[];
+  /** All of the customer's stages (active and inactive), already
+   *  ordered by display_order — the same order the Create Lead
+   *  dropdown, stage filter, and Pipeline Board columns use, so this
+   *  section can never drift out of sync with the rest of the page. */
+  stages: CustomerLeadStage[];
 };
 
 /**
- * Deliberately built from `leads` directly (not a fixed set of counts) so
- * it can never drift from real data. Driven entirely by LEAD_STAGES, the
- * single source of truth shared with the Create Lead Stage dropdown and
- * the Pipeline Board columns — so "Lost" (now a real, CHECK-allowed
- * stage) appears here automatically, with no separate list to keep in
- * sync.
+ * Deliberately built from `leads` directly (not a fixed set of counts)
+ * so it can never drift from real data, and from the customer's actual
+ * configured stages (not a hardcoded list) so an arbitrary number of
+ * customer-defined stages — "Prospecting", "Dealer Technical
+ * Inspection", anything — show up here automatically, in the order the
+ * customer configured, with zero code changes.
  */
-export function LeadsByStage({ leads }: LeadsByStageProps) {
+export function LeadsByStage({ leads, stages }: LeadsByStageProps) {
   const total = leads.length;
-  const stageCounts = LEAD_STAGES.map((stage) => ({
+  const stageCounts = stages.map((stage) => ({
     stage,
-    count: leads.filter((lead) => lead.stage === stage).length,
+    count: leads.filter((lead) => lead.stage_id === stage.id).length,
   }));
 
   return (
@@ -39,27 +35,29 @@ export function LeadsByStage({ leads }: LeadsByStageProps) {
       </div>
 
       <div className="mt-5 flex h-3 w-full gap-[3px] rounded-full bg-neutral-100 p-[3px]">
-        {stageCounts.map(({ stage, count }) =>
-          count === 0 ? null : (
-            <div
-              key={stage}
-              className={`rounded-full transition-[width] duration-300 ease-out ${STAGE_DOT_COLORS[stage]}`}
-              style={{ width: `${(count / total) * 100}%` }}
-            />
-          ),
-        )}
+        {total === 0
+          ? null
+          : stageCounts.map(({ stage, count }) =>
+              count === 0 ? null : (
+                <div
+                  key={stage.id}
+                  className={`rounded-full transition-[width] duration-300 ease-out ${stageDotClass(stage)}`}
+                  style={{ width: `${(count / total) * 100}%` }}
+                />
+              ),
+            )}
       </div>
 
       <div className="mt-4 flex flex-wrap gap-x-6 gap-y-2.5">
         {stageCounts.map(({ stage, count }) => (
           <div
-            key={stage}
+            key={stage.id}
             className="flex items-center gap-2 rounded-md px-1.5 py-0.5 text-sm transition-colors hover:bg-neutral-50"
           >
             <span
-              className={`h-2.5 w-2.5 shrink-0 rounded-full shadow-sm ${count === 0 ? "opacity-40" : ""} ${STAGE_DOT_COLORS[stage]}`}
+              className={`h-2.5 w-2.5 shrink-0 rounded-full shadow-sm ${count === 0 ? "opacity-40" : ""} ${stageDotClass(stage)}`}
             />
-            <span className={count === 0 ? "text-neutral-400" : "text-neutral-600"}>{stage}</span>
+            <span className={count === 0 ? "text-neutral-400" : "text-neutral-600"}>{stage.stage}</span>
             <span className={`font-semibold ${count === 0 ? "text-neutral-300" : "text-neutral-900"}`}>{count}</span>
           </div>
         ))}

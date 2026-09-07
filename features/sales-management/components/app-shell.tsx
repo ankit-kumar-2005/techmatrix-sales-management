@@ -40,7 +40,7 @@ export function AppShell({ customerName, userEmail, userAvatarUrl, children }: A
           }`}
         />
         <div
-          className={`relative z-50 h-dvh w-72 max-w-[80vw] bg-white shadow-xl transition-transform duration-200 ${
+          className={`relative z-50 h-dvh w-72 max-w-[80vw] bg-slate-900 shadow-xl transition-transform duration-200 ${
             mobileNavOpen ? "translate-x-0" : "-translate-x-full"
           }`}
         >
@@ -50,7 +50,7 @@ export function AppShell({ customerName, userEmail, userAvatarUrl, children }: A
               onClick={() => setMobileNavOpen(false)}
               aria-label="Close navigation"
               tabIndex={mobileNavOpen ? 0 : -1}
-              className="rounded-lg p-2 text-neutral-500 transition-colors hover:bg-neutral-100"
+              className="rounded-lg p-2 text-slate-400 transition-colors hover:bg-white/10 hover:text-white"
             >
               <CloseIcon className="h-5 w-5" />
             </button>
