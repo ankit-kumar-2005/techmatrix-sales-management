@@ -97,7 +97,7 @@ export function AvatarUpload({ userId, initialAvatarUrl, initial }: AvatarUpload
 
   return (
     <div className="flex items-center gap-4">
-      <span className="relative flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-full bg-sky-600 text-xl font-bold text-white">
+      <span className="relative flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-full bg-sky-600 text-xl font-bold text-white shadow-sm outline outline-1 -outline-offset-1 outline-black/5 transition-transform duration-200 hover:scale-[1.03]">
         {avatarUrl ? (
           // eslint-disable-next-line @next/next/no-img-element -- arbitrary user-uploaded Storage URL, not a build-time-known image domain
           <img src={avatarUrl} alt="" className="h-full w-full object-cover" />
@@ -107,12 +107,12 @@ export function AvatarUpload({ userId, initialAvatarUrl, initial }: AvatarUpload
       </span>
 
       <div className="flex flex-col gap-2">
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2.5">
           <button
             type="button"
             onClick={() => inputRef.current?.click()}
             disabled={isBusy}
-            className="flex items-center gap-1.5 rounded-full border border-neutral-300 px-3.5 py-2 text-xs font-semibold text-neutral-700 transition-colors hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-60"
+            className="flex h-9 items-center gap-1.5 rounded-full border border-neutral-300 px-3.5 text-xs font-semibold text-neutral-700 transition-colors hover:border-neutral-400 hover:bg-neutral-50 focus-visible:ring-2 focus-visible:ring-sky-500/40 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-60"
           >
             <CameraIcon className="h-3.5 w-3.5" />
             {isBusy ? "Working..." : avatarUrl ? "Replace Photo" : "Upload Photo"}
@@ -122,7 +122,7 @@ export function AvatarUpload({ userId, initialAvatarUrl, initial }: AvatarUpload
               type="button"
               onClick={handleRemove}
               disabled={isBusy}
-              className="flex items-center gap-1.5 rounded-full border border-neutral-300 px-3.5 py-2 text-xs font-semibold text-neutral-700 transition-colors hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-60"
+              className="flex h-9 items-center gap-1.5 rounded-full border border-neutral-300 px-3.5 text-xs font-semibold text-neutral-700 transition-colors hover:border-red-300 hover:bg-red-50 hover:text-red-600 focus-visible:ring-2 focus-visible:ring-red-500/40 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-60"
             >
               <TrashIcon className="h-3.5 w-3.5" />
               Remove

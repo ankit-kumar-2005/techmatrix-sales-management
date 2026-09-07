@@ -6,18 +6,20 @@ import { CloseIcon, MenuIcon } from "./icons";
 
 type AppShellProps = {
   customerName: string;
+  userEmail: string;
+  userAvatarUrl: string | null;
   children: ReactNode;
 };
 
-export function AppShell({ customerName, children }: AppShellProps) {
+export function AppShell({ customerName, userEmail, userAvatarUrl, children }: AppShellProps) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   return (
     <div className="flex min-h-screen bg-neutral-50">
       {/* Desktop sidebar */}
       <aside className="hidden w-64 shrink-0 border-r border-neutral-200 lg:block">
-        <div className="sticky top-0 h-screen">
-          <Sidebar customerName={customerName} />
+        <div className="sticky top-0 h-dvh overflow-hidden">
+          <Sidebar customerName={customerName} userEmail={userEmail} userAvatarUrl={userAvatarUrl} />
         </div>
       </aside>
 
@@ -38,7 +40,7 @@ export function AppShell({ customerName, children }: AppShellProps) {
           }`}
         />
         <div
-          className={`relative z-50 h-full w-72 max-w-[80vw] bg-white shadow-xl transition-transform duration-200 ${
+          className={`relative z-50 h-dvh w-72 max-w-[80vw] bg-white shadow-xl transition-transform duration-200 ${
             mobileNavOpen ? "translate-x-0" : "-translate-x-full"
           }`}
         >
@@ -53,7 +55,12 @@ export function AppShell({ customerName, children }: AppShellProps) {
               <CloseIcon className="h-5 w-5" />
             </button>
           </div>
-          <Sidebar customerName={customerName} onNavigate={() => setMobileNavOpen(false)} />
+          <Sidebar
+            customerName={customerName}
+            userEmail={userEmail}
+            userAvatarUrl={userAvatarUrl}
+            onNavigate={() => setMobileNavOpen(false)}
+          />
         </div>
       </div>
 

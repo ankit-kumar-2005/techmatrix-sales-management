@@ -38,24 +38,29 @@ export function LeadsByStage({ leads }: LeadsByStageProps) {
         </span>
       </div>
 
-      <div className="mt-4 flex h-2.5 w-full overflow-hidden rounded-full bg-neutral-100">
+      <div className="mt-5 flex h-3 w-full gap-[3px] rounded-full bg-neutral-100 p-[3px]">
         {stageCounts.map(({ stage, count }) =>
           count === 0 ? null : (
             <div
               key={stage}
-              className={STAGE_DOT_COLORS[stage]}
+              className={`rounded-full transition-[width] duration-300 ease-out ${STAGE_DOT_COLORS[stage]}`}
               style={{ width: `${(count / total) * 100}%` }}
             />
           ),
         )}
       </div>
 
-      <div className="mt-4 flex flex-wrap gap-x-6 gap-y-2">
+      <div className="mt-4 flex flex-wrap gap-x-6 gap-y-2.5">
         {stageCounts.map(({ stage, count }) => (
-          <div key={stage} className="flex items-center gap-1.5 text-sm">
-            <span className={`h-2 w-2 rounded-full ${STAGE_DOT_COLORS[stage]}`} />
-            <span className="text-neutral-600">{stage}</span>
-            <span className="font-semibold text-neutral-900">{count}</span>
+          <div
+            key={stage}
+            className="flex items-center gap-2 rounded-md px-1.5 py-0.5 text-sm transition-colors hover:bg-neutral-50"
+          >
+            <span
+              className={`h-2.5 w-2.5 shrink-0 rounded-full shadow-sm ${count === 0 ? "opacity-40" : ""} ${STAGE_DOT_COLORS[stage]}`}
+            />
+            <span className={count === 0 ? "text-neutral-400" : "text-neutral-600"}>{stage}</span>
+            <span className={`font-semibold ${count === 0 ? "text-neutral-300" : "text-neutral-900"}`}>{count}</span>
           </div>
         ))}
       </div>

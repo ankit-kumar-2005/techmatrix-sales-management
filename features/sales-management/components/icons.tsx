@@ -314,6 +314,36 @@ export function SearchIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
+export function UserPlusIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <circle cx="9" cy="8" r="4" />
+      <path d="M2 21c0-4.4 3.13-8 7-8s7 3.6 7 8" />
+      <path d="M19 8v6M22 11h-6" />
+    </Icon>
+  );
+}
+
+export function BuildingIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <rect x="5" y="3" width="14" height="18" rx="1" />
+      <path d="M9 8h1M14 8h1M9 12h1M14 12h1M9 16h1M14 16h1" />
+      <path d="M10 21v-3a2 2 0 0 1 4 0v3" />
+    </Icon>
+  );
+}
+
+export function LogOutIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+      <path d="M16 17l5-5-5-5" />
+      <path d="M21 12H9" />
+    </Icon>
+  );
+}
+
 export function TrashIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <Icon {...props}>

@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { LeadStageBadge } from "./lead-stage-badge";
-import { SearchIcon, LeadCaptureIcon } from "@/features/sales-management/components/icons";
+import { SearchIcon, LeadCaptureIcon, ChevronDownIcon } from "@/features/sales-management/components/icons";
 import { currencyFormatter, dateFormatter } from "@/utils/format";
 import { LEAD_SOURCES, LEAD_STAGES } from "../schemas";
 import type { Lead, LeadStage } from "@/types/lead";
@@ -11,7 +11,9 @@ import type { TeamDirectoryEntry } from "@/types/lead";
 const UNASSIGNED = "unassigned";
 
 const controlClass =
-  "h-10 rounded-lg border border-neutral-300 bg-white px-3 text-sm text-neutral-700 outline-none transition-colors focus:border-sky-500 focus:ring-2 focus:ring-sky-500/30";
+  "h-10 rounded-lg border border-neutral-300 bg-white px-3 text-sm text-neutral-700 outline-none transition-colors hover:border-neutral-400 focus:border-sky-500 focus:ring-2 focus:ring-sky-500/30";
+
+const selectControlClass = `${controlClass} w-full appearance-none pr-9`;
 
 type PipelineViewProps = {
   leads: Lead[];
@@ -77,32 +79,40 @@ export function PipelineView({ leads, owners }: PipelineViewProps) {
   }
 
   return (
-    <div className="rounded-2xl bg-white shadow-sm ring-1 ring-black/5">
-      <div className="flex flex-col gap-4 border-b border-neutral-100 p-4 sm:p-6 lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex gap-1 rounded-full bg-neutral-100 p-1">
-          <button
-            type="button"
-            onClick={() => setView("list")}
-            className={`rounded-full px-4 py-2 text-sm font-semibold transition-colors ${
-              view === "list" ? "bg-white text-neutral-900 shadow-sm" : "text-neutral-500 hover:text-neutral-700"
-            }`}
-          >
-            List
-          </button>
-          <button
-            type="button"
-            onClick={() => setView("board")}
-            className={`rounded-full px-4 py-2 text-sm font-semibold transition-colors ${
-              view === "board" ? "bg-white text-neutral-900 shadow-sm" : "text-neutral-500 hover:text-neutral-700"
-            }`}
-          >
-            Pipeline board
-          </button>
-        </div>
+    <div className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-black/5">
+      {/* Below sm: everything stacks full-width (no wrapping concern —
+          it's already one column). From sm: up, this becomes a single
+          flex-nowrap row: every control except search is flex-shrink-0
+          at a fixed width, search is the one flexible/shrinkable element
+          (flex-1 with a floor), and if the row's total content still
+          can't fit at a given width, this container scrolls horizontally
+          rather than letting any control wrap onto a second line or spill
+          past the card. */}
+      <div className="border-b border-neutral-100 p-4 sm:overflow-x-auto sm:p-5">
+        <div className="flex flex-col gap-3 sm:flex-row sm:flex-nowrap sm:items-center sm:gap-3">
+          <div className="flex shrink-0 gap-1 rounded-full bg-neutral-100 p-1">
+            <button
+              type="button"
+              onClick={() => setView("list")}
+              className={`rounded-full px-4 py-2 text-sm font-semibold transition-all duration-200 focus-visible:ring-2 focus-visible:ring-sky-500/40 focus-visible:outline-none ${
+                view === "list" ? "bg-white text-neutral-900 shadow-sm" : "text-neutral-500 hover:text-neutral-700"
+              }`}
+            >
+              List
+            </button>
+            <button
+              type="button"
+              onClick={() => setView("board")}
+              className={`rounded-full px-4 py-2 text-sm font-semibold transition-all duration-200 focus-visible:ring-2 focus-visible:ring-sky-500/40 focus-visible:outline-none ${
+                view === "board" ? "bg-white text-neutral-900 shadow-sm" : "text-neutral-500 hover:text-neutral-700"
+              }`}
+            >
+              Pipeline board
+            </button>
+          </div>
 
-        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
-          <div className="relative sm:w-64">
-            <SearchIcon className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-neutral-400" />
+          <div className="group relative w-full sm:min-w-[10rem] sm:flex-1">
+            <SearchIcon className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-neutral-400 transition-colors group-focus-within:text-sky-500" />
             <input
               type="text"
               value={search}
@@ -112,51 +122,60 @@ export function PipelineView({ leads, owners }: PipelineViewProps) {
             />
           </div>
 
-          <select
-            value={stageFilter}
-            onChange={(event) => setStageFilter(event.target.value)}
-            className={controlClass}
-          >
-            <option value="">All stages</option>
-            {LEAD_STAGES.map((stage) => (
-              <option key={stage} value={stage}>
-                {stage}
-              </option>
-            ))}
-          </select>
+          <div className="relative w-full shrink-0 sm:w-32">
+            <select
+              value={stageFilter}
+              onChange={(event) => setStageFilter(event.target.value)}
+              className={`${selectControlClass} truncate`}
+            >
+              <option value="">All stages</option>
+              {LEAD_STAGES.map((stage) => (
+                <option key={stage} value={stage}>
+                  {stage}
+                </option>
+              ))}
+            </select>
+            <ChevronDownIcon className="pointer-events-none absolute top-1/2 right-3 h-4 w-4 -translate-y-1/2 text-neutral-400" />
+          </div>
 
-          <select
-            value={ownerFilter}
-            onChange={(event) => setOwnerFilter(event.target.value)}
-            className={controlClass}
-          >
-            <option value="">All owners</option>
-            <option value={UNASSIGNED}>Unassigned</option>
-            {owners.map((owner) => (
-              <option key={owner.customer_user_id} value={owner.customer_user_id}>
-                {owner.email}
-              </option>
-            ))}
-          </select>
+          <div className="relative w-full shrink-0 sm:w-32">
+            <select
+              value={ownerFilter}
+              onChange={(event) => setOwnerFilter(event.target.value)}
+              className={`${selectControlClass} truncate`}
+            >
+              <option value="">All owners</option>
+              <option value={UNASSIGNED}>Unassigned</option>
+              {owners.map((owner) => (
+                <option key={owner.customer_user_id} value={owner.customer_user_id}>
+                  {owner.email}
+                </option>
+              ))}
+            </select>
+            <ChevronDownIcon className="pointer-events-none absolute top-1/2 right-3 h-4 w-4 -translate-y-1/2 text-neutral-400" />
+          </div>
 
-          <select
-            value={sourceFilter}
-            onChange={(event) => setSourceFilter(event.target.value)}
-            className={controlClass}
-          >
-            <option value="">All sources</option>
-            {availableSources.map((source) => (
-              <option key={source} value={source}>
-                {source}
-              </option>
-            ))}
-          </select>
+          <div className="relative w-full shrink-0 sm:w-32">
+            <select
+              value={sourceFilter}
+              onChange={(event) => setSourceFilter(event.target.value)}
+              className={`${selectControlClass} truncate`}
+            >
+              <option value="">All sources</option>
+              {availableSources.map((source) => (
+                <option key={source} value={source}>
+                  {source}
+                </option>
+              ))}
+            </select>
+            <ChevronDownIcon className="pointer-events-none absolute top-1/2 right-3 h-4 w-4 -translate-y-1/2 text-neutral-400" />
+          </div>
 
           <button
             type="button"
             onClick={resetFilters}
             disabled={!hasActiveFilters}
-            className="h-10 rounded-lg border border-neutral-300 px-4 text-sm font-semibold text-neutral-600 transition-colors hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50"
+            className="h-10 w-full shrink-0 rounded-lg border border-neutral-300 px-4 text-sm font-semibold text-neutral-500 transition-colors hover:border-neutral-400 hover:bg-neutral-50 hover:text-neutral-700 focus-visible:ring-2 focus-visible:ring-sky-500/40 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
           >
             Reset
           </button>
@@ -207,7 +226,7 @@ function ListView({ leads, ownerEmailById }: ViewProps) {
     <div className="overflow-x-auto">
       <table className="w-full min-w-[720px] text-left text-sm">
         <thead>
-          <tr className="border-b border-neutral-100 text-xs font-medium uppercase tracking-wide text-neutral-500">
+          <tr className="border-b border-neutral-100 bg-neutral-50/60 text-xs font-semibold tracking-wider text-neutral-500 uppercase">
             <th className="px-6 py-3">Lead</th>
             <th className="px-3 py-3">Stage</th>
             <th className="px-3 py-3">Value</th>
@@ -224,31 +243,33 @@ function ListView({ leads, ownerEmailById }: ViewProps) {
 
             return (
               <tr key={lead.id} className="border-b border-neutral-50 transition-colors hover:bg-neutral-50">
-                <td className="px-6 py-3.5">
+                <td className="px-6 py-4">
                   <p className="font-medium text-neutral-900">{lead.company ?? "—"}</p>
                   <p className="text-xs text-neutral-500">{lead.contact_name}</p>
                 </td>
-                <td className="px-3 py-3.5">
+                <td className="px-3 py-4">
                   <LeadStageBadge stage={lead.stage} />
                 </td>
-                <td className="px-3 py-3.5 font-medium text-neutral-900">
-                  {lead.deal_value === null ? "—" : currencyFormatter.format(lead.deal_value)}
+                <td className="px-3 py-4 font-medium text-neutral-900">
+                  {lead.deal_value === null ? <span className="text-neutral-300">—</span> : currencyFormatter.format(lead.deal_value)}
                 </td>
-                <td className="px-3 py-3.5 text-neutral-600">{lead.source ?? "—"}</td>
-                <td className="px-3 py-3.5">
+                <td className="px-3 py-4 text-neutral-600">{lead.source ?? <span className="text-neutral-300">—</span>}</td>
+                <td className="px-3 py-4">
                   {ownerEmail ? (
                     <span className="flex items-center gap-2">
-                      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-sky-100 text-[10px] font-semibold text-sky-700">
+                      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-sky-100 text-[10px] font-semibold text-sky-700 shadow-sm ring-1 ring-sky-200/60">
                         {ownerInitial}
                       </span>
-                      <span className="max-w-[10rem] truncate text-neutral-700">{ownerEmail}</span>
+                      <span className="max-w-[10rem] truncate text-neutral-700" title={ownerEmail}>
+                        {ownerEmail}
+                      </span>
                     </span>
                   ) : (
                     <span className="text-neutral-400">Unassigned</span>
                   )}
                 </td>
-                <td className="px-3 py-3.5 text-neutral-500">{dateFormatter.format(new Date(lead.updated_at))}</td>
-                <td className="px-3 py-3.5 text-neutral-600">{lead.next_step ?? "—"}</td>
+                <td className="px-3 py-4 text-neutral-500">{dateFormatter.format(new Date(lead.updated_at))}</td>
+                <td className="px-3 py-4 text-neutral-600">{lead.next_step ?? <span className="text-neutral-300">—</span>}</td>
               </tr>
             );
           })}
@@ -295,18 +316,28 @@ function BoardView({ leads, ownerEmailById }: ViewProps) {
                 const ownerInitial = ownerEmail ? ownerEmail.charAt(0).toUpperCase() : null;
 
                 return (
-                  <div key={lead.id} className="rounded-xl bg-white p-3.5 shadow-sm ring-1 ring-black/5 transition-shadow hover:shadow-md">
-                    <p className="truncate text-sm font-semibold text-neutral-900">{lead.company ?? "—"}</p>
-                    <p className="truncate text-xs text-neutral-500">{lead.contact_name}</p>
+                  <div
+                    key={lead.id}
+                    className="rounded-xl bg-white p-3.5 shadow-sm ring-1 ring-black/5 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md"
+                  >
+                    <p className="truncate text-sm font-semibold text-neutral-900" title={lead.company ?? undefined}>
+                      {lead.company ?? "—"}
+                    </p>
+                    <p className="truncate text-xs text-neutral-500" title={lead.contact_name}>
+                      {lead.contact_name}
+                    </p>
                     <div className="mt-2.5 flex items-center justify-between gap-2">
                       <span className="flex items-center gap-1.5">
                         {ownerEmail ? (
-                          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-sky-100 text-[9px] font-semibold text-sky-700">
+                          <span
+                            title={ownerEmail}
+                            className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-sky-100 text-[9px] font-semibold text-sky-700 shadow-sm ring-1 ring-sky-200/60"
+                          >
                             {ownerInitial}
                           </span>
                         ) : null}
                         <span className="text-sm font-semibold text-neutral-900">
-                          {lead.deal_value === null ? "—" : currencyFormatter.format(lead.deal_value)}
+                          {lead.deal_value === null ? <span className="text-neutral-300">—</span> : currencyFormatter.format(lead.deal_value)}
                         </span>
                       </span>
                     </div>

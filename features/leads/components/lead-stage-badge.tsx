@@ -11,7 +11,9 @@ const STAGE_STYLES: Record<LeadStage, string> = {
 
 export function LeadStageBadge({ stage }: { stage: LeadStage }) {
   return (
-    <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${STAGE_STYLES[stage]}`}>
+    <span
+      className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 ring-inset ring-black/5 ${STAGE_STYLES[stage]}`}
+    >
       {stage}
     </span>
   );

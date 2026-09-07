@@ -95,8 +95,8 @@ export default async function SalesManagementPage() {
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-neutral-900">Sales pipeline</h1>
-          <p className="mt-1 text-sm text-neutral-600">
+          <h1 className="text-2xl font-bold tracking-tight text-neutral-900 sm:text-3xl">Sales pipeline</h1>
+          <p className="mt-1.5 text-sm text-neutral-500">
             Every open deal for {membership.customer.company_name ?? "your organization"}, in one place.
           </p>
         </div>
@@ -109,16 +109,22 @@ export default async function SalesManagementPage() {
           return (
             <div
               key={card.label}
-              className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-black/5 transition-shadow hover:shadow-md"
+              className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-black/5 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-lg hover:ring-black/10"
             >
               <div className="flex items-center justify-between">
-                <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">{card.label}</p>
-                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-sky-50 text-sky-600">
-                  <Icon className="h-4 w-4" />
+                <p className="text-[11px] font-semibold tracking-wider text-neutral-500 uppercase">{card.label}</p>
+                <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-sky-50 text-sky-600 ring-1 ring-sky-100">
+                  <Icon className="h-4.5 w-4.5" />
                 </span>
               </div>
-              <p className="mt-3 text-2xl font-bold text-neutral-900">{card.value}</p>
-              <p className="mt-1 text-xs text-neutral-500">{card.caption}</p>
+              <p
+                className={`mt-4 text-3xl font-bold tracking-tight ${
+                  card.value === "—" ? "text-neutral-300" : "text-neutral-900"
+                }`}
+              >
+                {card.value}
+              </p>
+              <p className="mt-1.5 text-xs text-neutral-500">{card.caption}</p>
             </div>
           );
         })}

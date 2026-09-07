@@ -32,6 +32,12 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   }
 
   const customerName = membership.customer.company_name ?? membership.customer.email;
+  const userEmail = user.email ?? membership.customer.email;
+  const userAvatarUrl = (user.user_metadata?.avatar_url as string | undefined) ?? null;
 
-  return <AppShell customerName={customerName}>{children}</AppShell>;
+  return (
+    <AppShell customerName={customerName} userEmail={userEmail} userAvatarUrl={userAvatarUrl}>
+      {children}
+    </AppShell>
+  );
 }

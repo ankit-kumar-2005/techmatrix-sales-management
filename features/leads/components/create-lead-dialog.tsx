@@ -127,9 +127,9 @@ export function CreateLeadDialog({ owners, role, currentUserEmail }: CreateLeadD
       <button
         type="button"
         onClick={() => setIsOpen(true)}
-        className="flex min-h-11 items-center gap-1.5 rounded-full bg-sky-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-sky-700 hover:shadow-md"
+        className="flex min-h-11 items-center gap-2 rounded-full bg-sky-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm shadow-sky-600/20 transition-all duration-200 hover:-translate-y-0.5 hover:bg-sky-700 hover:shadow-lg hover:shadow-sky-600/30 focus-visible:ring-2 focus-visible:ring-sky-500/40 focus-visible:ring-offset-2 focus-visible:outline-none"
       >
-        <PlusIcon className="h-4 w-4" />
+        <PlusIcon className="h-4 w-4 shrink-0" />
         New Lead
       </button>
 
