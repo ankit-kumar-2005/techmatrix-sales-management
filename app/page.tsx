@@ -112,7 +112,7 @@ export default function HomePage() {
               <div className="flex w-full max-w-xs flex-col gap-3 sm:w-auto sm:max-w-none sm:flex-row">
                 <Link
                   href="/signup"
-                  className="min-h-12 rounded-full bg-sky-600 px-8 py-3 text-base font-semibold text-white shadow-sm transition-colors hover:bg-sky-700"
+                  className="min-h-12 rounded-full bg-sky-600 px-8 py-3 text-center text-base font-semibold text-white shadow-sm transition-colors hover:bg-sky-700"
                 >
                   Start Free Trial
                 </Link>

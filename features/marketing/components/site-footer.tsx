@@ -41,7 +41,7 @@ export function SiteFooter() {
       <div aria-hidden className="h-[3px] w-full bg-gradient-to-r from-sky-500 to-teal-400" />
 
       <div className="mx-auto max-w-6xl px-4 py-14 sm:px-6 lg:px-8">
-        <div className="grid grid-cols-1 gap-10 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid grid-cols-1 gap-8 sm:grid-cols-2 sm:gap-10 lg:grid-cols-4">
           {/* Brand */}
           <div className="sm:col-span-2 lg:col-span-1">
             <Link href="/" className="flex items-center gap-2.5">
@@ -87,7 +87,10 @@ export function SiteFooter() {
             <ul className="mt-4 flex flex-col gap-2.5">
               {PRODUCT_LINKS.map((link) => (
                 <li key={link.label}>
-                  <Link href={link.href} className="text-sm text-slate-300 transition-colors hover:text-white">
+                  <Link
+                    href={link.href}
+                    className="inline-block py-1 text-sm text-slate-300 transition-colors hover:text-white"
+                  >
                     {link.label}
                   </Link>
                 </li>
@@ -101,7 +104,10 @@ export function SiteFooter() {
             <ul className="mt-4 flex flex-col gap-2.5">
               {COMPANY_LINKS.map((link) => (
                 <li key={link.label}>
-                  <Link href={link.href} className="text-sm text-slate-300 transition-colors hover:text-white">
+                  <Link
+                    href={link.href}
+                    className="inline-block py-1 text-sm text-slate-300 transition-colors hover:text-white"
+                  >
                     {link.label}
                   </Link>
                 </li>
