@@ -24,9 +24,12 @@ const ROLE_LABELS: Record<string, string> = {
  * a value that belongs on screen as if it were a role. See CLAUDE.md /
  * multi-tenant-security.
  *
- * There is no "full name" anywhere in this app's data model (only
- * auth.users.email) — this page identifies people by email throughout,
- * rather than inventing a name field that doesn't exist in the schema.
+ * Name comes from customer_users.name specifically — the individual
+ * member's own name, set once at signup — never customers.name (that's
+ * a different value, the signup requester's name copied onto the
+ * customer/company record; see Company Information's "Client Name").
+ * Email otherwise remains the primary identity shown throughout this
+ * page, unchanged.
  */
 export default async function ProfilePage() {
   const supabase = await createClient();
@@ -101,6 +104,12 @@ export default async function ProfilePage() {
             Personal Information
           </h2>
           <dl className="mt-5 grid grid-cols-1 gap-5 sm:grid-cols-2">
+            <div>
+              <dt className="text-xs font-medium tracking-wide text-neutral-500 uppercase">Name</dt>
+              <dd className="mt-1.5 truncate text-sm font-medium text-neutral-900">
+                {membership.membership.name ?? "—"}
+              </dd>
+            </div>
             <div>
               <dt className="text-xs font-medium tracking-wide text-neutral-500 uppercase">Email</dt>
               <dd className="mt-1.5 truncate text-sm font-medium text-neutral-900">{user.email}</dd>

@@ -22,7 +22,7 @@ export default async function SignUpPage({ searchParams }: SignUpPageProps) {
       >
         {error === "link_invalid" ? (
           <MessageBanner tone="error">
-            This verification link is invalid or has expired. Please sign up again.
+            Your verification link has expired. Please request a new verification email.
           </MessageBanner>
         ) : null}
         <SignUpForm />

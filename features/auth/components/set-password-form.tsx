@@ -54,6 +54,7 @@ export function SetPasswordForm() {
         data: { user },
       } = await supabase.auth.getUser();
 
+      const name = (user?.user_metadata?.name as string | null | undefined) ?? null;
       const phone = (user?.user_metadata?.phone as string | undefined) ?? "";
       const companyName = (user?.user_metadata?.company_name as string | null | undefined) ?? null;
       const email = user?.email ?? "";
@@ -62,6 +63,7 @@ export function SetPasswordForm() {
         p_email: email,
         p_phone: phone,
         p_company_name: companyName,
+        p_name: name,
       });
 
       if (customerError) {

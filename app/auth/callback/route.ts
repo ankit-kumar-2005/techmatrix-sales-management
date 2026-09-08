@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentMembership } from "@/features/customers/lib/get-current-membership";
 
 /**
  * Handles every Supabase email-link redirect: signup verification and
@@ -15,6 +16,23 @@ import { createClient } from "@/lib/supabase/server";
  * signup vs. password-recovery specifically:
  *   - signup verification -> next=/set-password, on_error=/signup
  *   - password recovery   -> next=/reset-password, on_error=/forgot-password
+ *
+ * EMAIL VERIFICATION != REGISTRATION COMPLETE: a signup-verification
+ * link only proves the address is real — registration only finishes
+ * once /set-password's own submit creates the customer_users row (see
+ * SetPasswordForm). A verified-but-unregistered user still needs
+ * next=/set-password. But someone re-clicking an old signup-verification
+ * link *after* already finishing registration (bookmarked it, clicked a
+ * stale email long after) has a real customer_users row already —
+ * sending them through /set-password again would ask them to re-set
+ * their password outside of Forgot Password, for no reason. So: only
+ * for that specific case (next === "/set-password"), check the
+ * session's membership via the existing customer_users relationship
+ * (no new table) and redirect straight to the app if it already exists.
+ * This check is deliberately scoped to next === "/set-password" only —
+ * password-recovery's next (/reset-password) must never be redirected
+ * away like this, since resetting a password for an already-registered
+ * user is the entire point of that flow.
  */
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
@@ -24,9 +42,16 @@ export async function GET(request: Request) {
 
   if (code) {
     const supabase = await createClient();
-    const { error } = await supabase.auth.exchangeCodeForSession(code);
+    const { data, error } = await supabase.auth.exchangeCodeForSession(code);
 
     if (!error) {
+      if (next === "/set-password" && data.user) {
+        const membership = await getCurrentMembership(supabase, data.user.id);
+        if (membership) {
+          return NextResponse.redirect(`${origin}/sales-management`);
+        }
+      }
+
       return NextResponse.redirect(`${origin}${next}`);
     }
   }

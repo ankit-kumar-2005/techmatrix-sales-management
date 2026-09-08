@@ -59,6 +59,14 @@ export function CompanyInformationForm({ customer, canEdit }: CompanyInformation
         </h2>
 
         <div className="mt-5 flex flex-col gap-4">
+          <div>
+            <FormField label="Client Name" defaultValue={customer.name ?? "—"} disabled />
+            <p className="mt-1.5 flex items-center gap-1.5 text-xs text-neutral-400">
+              <LockIcon className="h-3 w-3 shrink-0" />
+              Set at signup and not editable here.
+            </p>
+          </div>
+
           <FormField
             label="Company Name"
             name="company_name"

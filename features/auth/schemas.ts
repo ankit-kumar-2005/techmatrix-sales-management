@@ -47,16 +47,39 @@ export const loginSchema = z.object({
 });
 
 /**
- * Sign up collects email + phone (required) + company name (optional) —
- * a verification link confirms the address first, and the real password
- * is set afterward (see newPasswordSchema), on /set-password, at which
- * point the customer record is created from phone/companyName (carried
- * through email verification via Supabase's user_metadata, since the
- * verification link is often opened in a different browser/tab).
+ * Signup-specific: required, but deliberately WITHOUT the shared
+ * emailSchema's format check/custom message above — Supabase Auth is the
+ * sole authority on email validity for this flow specifically. A
+ * separate schema, not a change to the shared `emailSchema` (still used
+ * by login/forgot-password, unchanged) — weakening that shared schema
+ * would silently affect flows this wasn't asked to touch.
+ */
+const signUpEmailSchema = z.string().trim().toLowerCase().min(1, "Email is required.");
+
+/**
+ * Sign up collects name + email + phone (required) + company name
+ * (optional) — a verification link confirms the address first, and the
+ * real password is set afterward (see newPasswordSchema), on
+ * /set-password, at which point the customer record is created from
+ * name/phone/companyName (carried through email verification via
+ * Supabase's user_metadata, since the verification link is often opened
+ * in a different browser/tab). max(100) matches this project's existing
+ * convention for a person/entity name field (see stageName() in
+ * features/leads/schemas.ts, which uses the same trim -> min -> max
+ * shape at a smaller length).
  */
 export const signUpSchema = z.object({
-  email: emailSchema,
-  phone: z.string().trim().min(1, "Phone is required.").max(30),
+  name: z
+    .string()
+    .trim()
+    .min(1, "Name is required.")
+    .max(100, "Name must be 100 characters or fewer."),
+  email: signUpEmailSchema,
+  phone: z
+    .string()
+    .trim()
+    .min(1, "Phone is required.")
+    .regex(/^\d{10}$/, "Phone number must be exactly 10 digits."),
   companyName: z
     .string()
     .trim()

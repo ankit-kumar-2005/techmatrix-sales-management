@@ -12,17 +12,31 @@ import { FormField } from "@/components/shared/form-field";
 import { MessageBanner } from "@/components/shared/message-banner";
 import { MailIcon, PhoneIcon } from "@/features/sales-management/components/icons";
 
+/** Resend cooldown, in seconds — a rate-limit on how often this specific
+ *  browser can trigger another verification email, not the link's own
+ *  expiration (that stays whatever the Supabase project has configured,
+ *  documented as 3600s/1hr by convention — never changed from app code). */
+const RESEND_COOLDOWN_SECONDS = 60;
+
 export function SignUpForm() {
   const router = useRouter();
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [companyName, setCompanyName] = useState("");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
-  const [infoMessage, setInfoMessage] = useState<string | null>(null);
   const [isDuplicate, setIsDuplicate] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Once a verification email has actually been sent, the form switches
+  // to a dedicated "check your email" view for that address — pendingEmail
+  // doubles as both "which view to show" and "which email resend targets".
+  const [pendingEmail, setPendingEmail] = useState<string | null>(null);
   const [resendCooldown, setResendCooldown] = useState(0);
+  const [isResending, setIsResending] = useState(false);
+  const [resendMessage, setResendMessage] = useState<string | null>(null);
+  const [resendError, setResendError] = useState<string | null>(null);
 
   useEffect(() => {
     if (resendCooldown <= 0) return;
@@ -34,13 +48,12 @@ export function SignUpForm() {
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (isSubmitting || resendCooldown > 0) return;
+    if (isSubmitting) return;
 
     setFormError(null);
-    setInfoMessage(null);
     setIsDuplicate(false);
 
-    const result = signUpSchema.safeParse({ email, phone, companyName });
+    const result = signUpSchema.safeParse({ name, email, phone, companyName });
     if (!result.success) {
       setFieldErrors(getFieldErrors(result.error));
       return;
@@ -60,6 +73,7 @@ export function SignUpForm() {
           // may be completed in a different browser/tab than it started
           // in). Read back in SetPasswordForm to create the customer.
           data: {
+            name: result.data.name,
             phone: result.data.phone,
             company_name: result.data.companyName ?? null,
           },
@@ -103,10 +117,17 @@ export function SignUpForm() {
         return;
       }
 
-      setInfoMessage(
-        "Verification email sent. Please check your inbox and click the link to continue setting up your account.",
-      );
-      setResendCooldown(15);
+      // Note: Supabase's signUp() response is identical whether this was
+      // a brand-new email or a re-attempt for an email that already has
+      // a pending, unverified signup (both cases: no error, a non-empty
+      // identities array) — that's deliberate on Supabase's part, the
+      // same anti-enumeration reasoning as ForgotPasswordForm. Either
+      // way, no duplicate Auth user is created and a verification email
+      // is (re-)sent, so this one message is accurate for both.
+      setPendingEmail(result.data.email);
+      setResendCooldown(RESEND_COOLDOWN_SECONDS);
+      setResendMessage(null);
+      setResendError(null);
     } catch {
       setFormError("Something went wrong. Please try again.");
     } finally {
@@ -114,8 +135,103 @@ export function SignUpForm() {
     }
   }
 
+  async function handleResend() {
+    if (!pendingEmail || isResending || resendCooldown > 0) return;
+
+    setIsResending(true);
+    setResendMessage(null);
+    setResendError(null);
+
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.auth.resend({
+        type: "signup",
+        email: pendingEmail,
+        // Without this, resend() falls back to the project's default
+        // Site URL instead of this flow's own callback — the root cause
+        // of a resent link landing on the home page instead of
+        // /set-password. Must match signUp()'s own emailRedirectTo above
+        // exactly.
+        options: {
+          emailRedirectTo: `${window.location.origin}/auth/callback?next=/set-password&on_error=/signup`,
+        },
+      });
+
+      if (error) {
+        // Supabase returns an error here specifically when there's no
+        // pending signup left to resend for (e.g. the account was
+        // verified in the meantime, in another tab) — that's a distinct,
+        // known outcome, not a generic failure.
+        const alreadyConfirmed = error.message.toLowerCase().includes("already confirmed");
+        if (alreadyConfirmed) {
+          setPendingEmail(null);
+          setIsDuplicate(true);
+          return;
+        }
+
+        setResendError(mapAuthErrorMessage(error.message));
+        return;
+      }
+
+      setResendMessage("Verification email resent. Please check your inbox.");
+      setResendCooldown(RESEND_COOLDOWN_SECONDS);
+    } catch {
+      setResendError("Something went wrong. Please try again.");
+    } finally {
+      setIsResending(false);
+    }
+  }
+
+  if (pendingEmail) {
+    return (
+      <div className="flex flex-col gap-4">
+        <MessageBanner tone="success">
+          Verification email sent to <strong>{pendingEmail}</strong>. Please check your inbox (and spam folder) to
+          verify your account. If you already started signing up with this email before, we&apos;ve sent a new link.
+        </MessageBanner>
+
+        {resendMessage ? <MessageBanner tone="success">{resendMessage}</MessageBanner> : null}
+        {resendError ? <MessageBanner tone="error">{resendError}</MessageBanner> : null}
+
+        <div className="rounded-lg bg-neutral-50 px-4 py-4 text-center ring-1 ring-neutral-100">
+          <p className="text-sm font-medium text-neutral-600">Didn&apos;t receive the email?</p>
+          <button
+            type="button"
+            onClick={handleResend}
+            disabled={isResending || resendCooldown > 0}
+            className="mt-2 text-sm font-semibold text-sky-600 hover:underline disabled:cursor-not-allowed disabled:text-neutral-400 disabled:no-underline"
+          >
+            {isResending
+              ? "Resending..."
+              : resendCooldown > 0
+                ? `Resend available in ${resendCooldown}s`
+                : "Resend verification email"}
+          </button>
+        </div>
+
+        <p className="text-center text-sm text-neutral-600">
+          Already have an account?{" "}
+          <Link href="/login" className="font-semibold text-sky-600 hover:underline">
+            Log In
+          </Link>
+        </p>
+      </div>
+    );
+  }
+
   return (
     <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-4">
+      <FormField
+        label="Name"
+        type="text"
+        autoComplete="name"
+        required
+        value={name}
+        onChange={(event) => setName(event.target.value)}
+        error={fieldErrors.name}
+        disabled={isSubmitting}
+      />
+
       <FormField
         label="Email"
         type="email"
@@ -152,31 +268,25 @@ export function SignUpForm() {
 
       {formError ? <MessageBanner tone="error">{formError}</MessageBanner> : null}
 
-      {infoMessage ? <MessageBanner tone="success">{infoMessage}</MessageBanner> : null}
-
       {isDuplicate ? (
         <MessageBanner tone="warning">
-          <p>Email is already registered. Please login.</p>
+          <p>This email is already registered. Please log in.</p>
           <Link
             href="/login"
             className="mt-2 inline-block rounded-full bg-amber-800 px-4 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-amber-900"
           >
-            Login
+            Log In
           </Link>
         </MessageBanner>
       ) : null}
 
       <button
         type="submit"
-        disabled={isSubmitting || resendCooldown > 0}
+        disabled={isSubmitting}
         aria-live="polite"
         className="mt-2 min-h-11 rounded-full bg-sky-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
       >
-        {isSubmitting
-          ? "Sending verification email..."
-          : resendCooldown > 0
-            ? `Resend available in ${resendCooldown}s`
-            : "Continue"}
+        {isSubmitting ? "Sending verification email..." : "Continue"}
       </button>
 
       <p className="text-center text-sm text-neutral-600">

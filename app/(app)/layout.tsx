@@ -31,6 +31,17 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     redirect("/signup");
   }
 
+  // Correct email + correct password authenticates the person, but a
+  // deactivated membership must never reach the app itself — checked
+  // here (server-side, from the session-derived membership, never
+  // client-supplied) because this layout already gates every
+  // customer-scoped route in one place. Not a sign-out: the session
+  // stays valid so /inactive can show who they are and offer to log
+  // out, but no (app) route ever renders its real content for them.
+  if (membership.membership.status !== "Active") {
+    redirect("/inactive");
+  }
+
   const customerName = membership.customer.company_name ?? membership.customer.email;
   const userEmail = user.email ?? membership.customer.email;
   const userAvatarUrl = (user.user_metadata?.avatar_url as string | undefined) ?? null;

@@ -16,6 +16,7 @@ export function LoginForm() {
   const [password, setPassword] = useState("");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
+  const [showSignUpLink, setShowSignUpLink] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -23,6 +24,7 @@ export function LoginForm() {
     if (isSubmitting) return;
 
     setFormError(null);
+    setShowSignUpLink(false);
 
     const result = loginSchema.safeParse({ email, password });
     if (!result.success) {
@@ -37,6 +39,28 @@ export function LoginForm() {
       const { error } = await supabase.auth.signInWithPassword(result.data);
 
       if (error) {
+        // Supabase deliberately returns this SAME generic error whether
+        // the email doesn't exist at all or it exists with a different
+        // password (anti-enumeration by design). Distinguishing them for
+        // a friendlier message requires a separate, explicit check —
+        // see auth_email_has_account()'s own doc comment in the
+        // migration for why this is a deliberate, narrow exception to
+        // that stance, made only after a login attempt has already
+        // failed (not a free-standing "does this email exist" check).
+        if (error.message.toLowerCase().includes("invalid login credentials")) {
+          const { data: emailExists } = await supabase.rpc("auth_email_has_account", {
+            p_email: result.data.email,
+          });
+
+          if (emailExists === false) {
+            setShowSignUpLink(true);
+            setFormError("We couldn't find an account with this email. Please sign up to create an account.");
+          } else {
+            setFormError("Incorrect email or password. If you forgot your password, please use Forgot Password.");
+          }
+          return;
+        }
+
         setFormError(mapAuthErrorMessage(error.message));
         return;
       }
@@ -88,7 +112,19 @@ export function LoginForm() {
         </Link>
       </div>
 
-      {formError ? <MessageBanner tone="error">{formError}</MessageBanner> : null}
+      {formError ? (
+        <MessageBanner tone="error">
+          <p>{formError}</p>
+          {showSignUpLink ? (
+            <Link
+              href="/signup"
+              className="mt-2 inline-block rounded-full bg-red-800 px-4 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-red-900"
+            >
+              Sign Up
+            </Link>
+          ) : null}
+        </MessageBanner>
+      ) : null}
 
       <button
         type="submit"
