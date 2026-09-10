@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Sidebar } from "./sidebar";
 import { CloseIcon, MenuIcon } from "./icons";
 
@@ -11,15 +11,62 @@ type AppShellProps = {
   children: ReactNode;
 };
 
+/** Desktop-only sidebar collapse preference — a per-viewer UI nicety,
+ *  not app data, so localStorage is the right (and simplest) place for
+ *  it rather than a DB column or cookie. Read back in an effect (not
+ *  during the initial render) since localStorage doesn't exist during
+ *  SSR: the first paint always assumes expanded, then flips to the
+ *  stored value once mounted — the same trade-off every localStorage-
+ *  backed UI preference in a server-rendered app makes. */
+const SIDEBAR_COLLAPSED_STORAGE_KEY = "techmatrix-sidebar-collapsed";
+
 export function AppShell({ customerName, userEmail, userAvatarUrl, children }: AppShellProps) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
+
+  useEffect(() => {
+    try {
+      const storedCollapsed = window.localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === "true";
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- window/localStorage don't exist during SSR, so this one-time sync of a persisted UI preference on mount is the standard hydration-safe pattern here, not a perf concern for a single boolean
+      setCollapsed(storedCollapsed);
+    } catch {
+      // localStorage can throw in some browser configurations (private
+      // mode, disabled storage) — expanded-by-default is a fine fallback.
+    }
+  }, []);
+
+  function toggleCollapsed() {
+    setCollapsed((wasCollapsed) => {
+      const nextCollapsed = !wasCollapsed;
+      try {
+        window.localStorage.setItem(SIDEBAR_COLLAPSED_STORAGE_KEY, String(nextCollapsed));
+      } catch {
+        // Preference just won't persist across reloads — not worth
+        // surfacing an error for a non-critical UI nicety.
+      }
+      return nextCollapsed;
+    });
+  }
 
   return (
     <div className="flex min-h-screen bg-neutral-50">
-      {/* Desktop sidebar */}
-      <aside className="hidden w-64 shrink-0 border-r border-neutral-200 lg:block">
+      {/* Desktop sidebar. Only this instance gets collapsed/onToggleCollapse
+          — the mobile drawer instance below never receives them, so it
+          always renders expanded and never shows the collapse toggle,
+          regardless of this desktop preference. */}
+      <aside
+        className={`hidden shrink-0 border-r border-neutral-200 transition-[width] duration-200 ease-in-out lg:block ${
+          collapsed ? "w-[72px]" : "w-64"
+        }`}
+      >
         <div className="sticky top-0 h-dvh overflow-hidden">
-          <Sidebar customerName={customerName} userEmail={userEmail} userAvatarUrl={userAvatarUrl} />
+          <Sidebar
+            customerName={customerName}
+            userEmail={userEmail}
+            userAvatarUrl={userAvatarUrl}
+            collapsed={collapsed}
+            onToggleCollapse={toggleCollapsed}
+          />
         </div>
       </aside>
 

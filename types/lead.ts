@@ -48,6 +48,12 @@ export type TeamDirectoryEntry = {
   customer_user_id: string;
   user_id: string;
   email: string;
+  /** customer_users.name, set at signup (or later invitation, once
+   *  that's built) — null for a member with no name on file yet. Never
+   *  the primary UI label on its own: see
+   *  features/leads/lib/owner-display.ts for how a display label and
+   *  initials are derived from this + email. */
+  name: string | null;
   role_name: string;
   manager_id: string | null;
   status: string;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState, useTransition } from "react";
+import { useActionState, useEffect, useState, useTransition } from "react";
 import { useFormStatus } from "react-dom";
 import { Modal } from "@/components/shared/modal";
 import { FormField } from "@/components/shared/form-field";
@@ -182,13 +182,15 @@ function StageDialog({ title, stage, onClose }: StageDialogProps) {
   const [state, formAction] = useActionState(action, initialLeadStageFormState);
   const fieldErrors = state.fieldErrors ?? {};
 
-  const [lastHandledState, setLastHandledState] = useState(state);
-  if (state !== lastHandledState) {
-    setLastHandledState(state);
+  // Same fix as EditLeadDialog: onClose here updates the PARENT's
+  // (LeadStageSettings') isAddOpen/editingStage state, not this
+  // component's own — that must be deferred to an effect, not called
+  // synchronously during this component's render.
+  useEffect(() => {
     if (state.success) {
       onClose();
     }
-  }
+  }, [state, onClose]);
 
   return (
     <Modal title={title} onClose={onClose}>

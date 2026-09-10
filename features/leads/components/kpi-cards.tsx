@@ -1,6 +1,8 @@
 "use client";
 
 import { useRef, useState, type ReactNode } from "react";
+import { useCountUpTransition } from "../lib/use-count-up-transition";
+import { currencyFormatter } from "@/utils/format";
 
 export type KpiCardAccent = {
   /** Diagonal gradient wash, e.g. "from-white to-sky-50" — deepens via gradientHover on hover. */
@@ -13,14 +15,26 @@ export type KpiCardAccent = {
   iconGlow: string;
 };
 
+/** Which formatter to apply to a card's raw numeric value — kept as a
+ *  string key rather than passing the formatter function itself, since
+ *  KpiCards is a Client Component receiving props from a Server
+ *  Component parent and a function can't safely cross that boundary
+ *  (unlike `icon`, which is a pre-rendered element, not a function
+ *  value). currencyFormatter is imported directly here instead — it's
+ *  a plain Intl.NumberFormat instance, safe to use client-side. */
+export type KpiCardFormat = "currency" | "percent";
+
 export type KpiCardData = {
   label: string;
-  value: string;
+  /** Raw numeric value — null means "no data yet" (rendered as "—",
+   *  never animated). Formatting is applied here, not by the caller, so
+   *  the count-up transition can interpolate the underlying number and
+   *  reformat it on every animation frame instead of animating text. */
+  value: number | null;
+  format: KpiCardFormat;
   caption: string;
-  /** Pre-rendered icon element, not a component reference — this is a
-   *  Client Component receiving props from a Server Component parent,
-   *  and only rendered elements (not raw component values) can safely
-   *  cross that boundary. */
+  /** Pre-rendered icon element, not a component reference — see the
+   *  KpiCardFormat note above for why. */
   icon: ReactNode;
   accent: KpiCardAccent;
 };
@@ -28,6 +42,10 @@ export type KpiCardData = {
 type KpiCardsProps = {
   cards: KpiCardData[];
 };
+
+function formatKpiValue(value: number, format: KpiCardFormat): string {
+  return format === "percent" ? `${Math.round(value)}%` : currencyFormatter.format(value);
+}
 
 /**
  * Same 4 cards, same order, same data — just two presentations of them.
@@ -61,27 +79,7 @@ export function KpiCards({ cards }: KpiCardsProps) {
         className="flex gap-4 overflow-x-auto pb-1 [-ms-overflow-style:none] [scroll-snap-type:x_mandatory] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:grid md:grid-cols-2 md:gap-4 md:overflow-visible md:pb-0 lg:grid-cols-4"
       >
         {cards.map((card) => (
-          <div
-            key={card.label}
-            className={`group w-[85%] shrink-0 rounded-2xl bg-gradient-to-br ${card.accent.gradient} ${card.accent.gradientHover} p-6 shadow-sm ring-1 ring-black/5 transition-all duration-200 ease-out [scroll-snap-align:start] hover:-translate-y-0.5 hover:shadow-lg hover:ring-black/10 md:w-auto md:shrink`}
-          >
-            <div className="flex items-center justify-between">
-              <p className="text-[11px] font-semibold tracking-wider text-neutral-500 uppercase">{card.label}</p>
-              <span
-                className={`flex h-10 w-10 items-center justify-center rounded-xl ring-1 transition-colors duration-150 ${card.accent.iconBg} ${card.accent.iconText} ${card.accent.iconRing} ${card.accent.iconGlow}`}
-              >
-                {card.icon}
-              </span>
-            </div>
-            <p
-              className={`mt-4 text-3xl font-bold tracking-tight ${
-                card.value === "—" ? "text-neutral-300" : "text-neutral-900"
-              }`}
-            >
-              {card.value}
-            </p>
-            <p className="mt-1.5 text-xs text-neutral-500">{card.caption}</p>
-          </div>
+          <KpiCard key={card.label} card={card} />
         ))}
       </div>
 
@@ -97,6 +95,37 @@ export function KpiCards({ cards }: KpiCardsProps) {
           />
         ))}
       </div>
+    </div>
+  );
+}
+
+/** Its own component (not inlined in the .map() above) because it needs
+ *  to call useCountUpTransition — one hook call per card instance, not
+ *  one call shared across a loop. */
+function KpiCard({ card }: { card: KpiCardData }) {
+  const animatedValue = useCountUpTransition(card.value);
+  const displayText = animatedValue === null ? "—" : formatKpiValue(animatedValue, card.format);
+
+  return (
+    <div
+      className={`group w-[85%] shrink-0 rounded-2xl bg-gradient-to-br ${card.accent.gradient} ${card.accent.gradientHover} p-6 shadow-sm ring-1 ring-black/5 transition-all duration-200 ease-out [scroll-snap-align:start] hover:-translate-y-0.5 hover:shadow-lg hover:ring-black/10 md:w-auto md:shrink`}
+    >
+      <div className="flex items-center justify-between">
+        <p className="text-[11px] font-semibold tracking-wider text-neutral-500 uppercase">{card.label}</p>
+        <span
+          className={`flex h-10 w-10 items-center justify-center rounded-xl ring-1 transition-colors duration-150 ${card.accent.iconBg} ${card.accent.iconText} ${card.accent.iconRing} ${card.accent.iconGlow}`}
+        >
+          {card.icon}
+        </span>
+      </div>
+      <p
+        className={`mt-4 text-3xl font-bold tracking-tight ${
+          displayText === "—" ? "text-neutral-300" : "text-neutral-900"
+        }`}
+      >
+        {displayText}
+      </p>
+      <p className="mt-1.5 text-xs text-neutral-500">{card.caption}</p>
     </div>
   );
 }

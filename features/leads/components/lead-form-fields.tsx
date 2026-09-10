@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, type ChangeEvent, type ReactNode } from "react";
+import { useMemo, useState, type ChangeEvent } from "react";
 import { useFormStatus } from "react-dom";
 import { FormField } from "@/components/shared/form-field";
-import { ChevronDownIcon } from "@/features/sales-management/components/icons";
+import { SelectField } from "@/components/shared/select-field";
 import { LEAD_SOURCES } from "../schemas";
+import { getOwnerDisplayLabels } from "../lib/owner-display";
 import type { CustomerLeadStage, TeamDirectoryEntry } from "@/types/lead";
 import type { CustomerRole } from "@/types/customer";
 
@@ -14,60 +15,10 @@ import type { CustomerRole } from "@/types/customer";
  * both dialogs' <form action={...}> submits the exact shape
  * createLeadSchema/updateLeadSchema expect), same WhatsApp-sync
  * behavior, same role-based Owner control. Extracted from what used to
- * be CreateLeadDialog's own inline JSX.
+ * be CreateLeadDialog's own inline JSX. SelectField itself now lives in
+ * components/shared/ (promoted from a local definition here once the
+ * Catalog feature needed the identical pattern).
  */
-
-/** Matches FormField's "filled" variant so every control in this form reads as one set. */
-function SelectField({
-  label,
-  id,
-  required,
-  error,
-  children,
-  ...selectProps
-}: {
-  label: string;
-  id: string;
-  required?: boolean;
-  error?: string;
-  children: ReactNode;
-} & React.SelectHTMLAttributes<HTMLSelectElement>) {
-  const errorId = `${id}-error`;
-
-  return (
-    <div className="flex flex-col gap-1.5">
-      <label htmlFor={id} className="text-sm font-medium text-neutral-700">
-        {label}
-        {required ? (
-          <span className="text-red-500" aria-hidden="true">
-            {" "}
-            *
-          </span>
-        ) : null}
-      </label>
-      <div className="relative">
-        <select
-          id={id}
-          aria-invalid={Boolean(error)}
-          aria-describedby={error ? errorId : undefined}
-          aria-required={required}
-          className={`w-full appearance-none rounded-lg border bg-neutral-100 px-3.5 py-2.5 pr-9 text-sm text-neutral-900 outline-none transition-colors focus:border-sky-500 focus:bg-white focus:ring-2 focus:ring-sky-500/30 ${
-            error ? "border-red-400" : "border-transparent"
-          }`}
-          {...selectProps}
-        >
-          {children}
-        </select>
-        <ChevronDownIcon className="pointer-events-none absolute top-1/2 right-3 h-4 w-4 -translate-y-1/2 text-neutral-500" />
-      </div>
-      {error ? (
-        <p id={errorId} role="alert" className="text-xs text-red-600">
-          {error}
-        </p>
-      ) : null}
-    </div>
-  );
-}
 
 /** Shared submit button — same look everywhere, label configurable per dialog. */
 export function LeadFormSubmitButton({ idleLabel, pendingLabel }: { idleLabel: string; pendingLabel: string }) {
@@ -145,6 +96,12 @@ export function LeadFormFields({ stages, owners, role, currentUserEmail, fieldEr
     defaultValues?.source && !LEAD_SOURCES.includes(defaultValues.source)
       ? [...LEAD_SOURCES, defaultValues.source]
       : LEAD_SOURCES;
+
+  // Same shared disambiguation logic as the Owner column/filter on the
+  // Pipeline page — computed here too (rather than passed as a prop)
+  // since Create/Edit Lead only ever receive the raw `owners` array,
+  // not something upstream that already derived labels from it.
+  const ownerLabelById = useMemo(() => getOwnerDisplayLabels(owners), [owners]);
 
   function handleContactNumberChange(event: ChangeEvent<HTMLInputElement>) {
     setContactNumber(event.target.value);
@@ -253,7 +210,7 @@ export function LeadFormFields({ stages, owners, role, currentUserEmail, fieldEr
             <option value="">Unassigned</option>
             {owners.map((owner) => (
               <option key={owner.customer_user_id} value={owner.customer_user_id}>
-                {owner.email}
+                {ownerLabelById.get(owner.customer_user_id) ?? owner.email}
               </option>
             ))}
           </SelectField>

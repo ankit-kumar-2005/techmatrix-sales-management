@@ -1,5 +1,5 @@
 import type { CustomerLeadStage } from "@/types/lead";
-import { stageBadgeClasses } from "../lib/stage-colors";
+import { stageBadgeClasses, stageDotClass } from "../lib/stage-colors";
 import { LockIcon } from "@/features/sales-management/components/icons";
 
 type LeadStageBadgeProps = {
@@ -14,8 +14,9 @@ type LeadStageBadgeProps = {
 export function LeadStageBadge({ stage, showLockedIndicator = false }: LeadStageBadgeProps) {
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 ring-inset ring-black/5 ${stageBadgeClasses(stage)}`}
+      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 ring-inset ring-black/5 ${stageBadgeClasses(stage)}`}
     >
+      <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${stageDotClass(stage)}`} aria-hidden="true" />
       {showLockedIndicator && stage.is_closed ? <LockIcon className="h-2.5 w-2.5" /> : null}
       {stage.stage}
     </span>

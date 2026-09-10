@@ -17,6 +17,10 @@ type FormFieldProps = InputHTMLAttributes<HTMLInputElement> & {
    *  trailing className override so it can't silently lose a Tailwind
    *  class-ordering fight against the default border/background. */
   variant?: "outline" | "filled";
+  /** Short hint below the input (e.g. format expectations) — only
+   *  rendered when there's no active error, since the two would
+   *  otherwise compete for the same line of space under the field. */
+  helperText?: string;
 };
 
 export function FormField({
@@ -27,18 +31,20 @@ export function FormField({
   icon,
   variant = "outline",
   className,
+  helperText,
   ...inputProps
 }: FormFieldProps) {
   const generatedId = useId();
   const inputId = id ?? generatedId;
   const errorId = `${inputId}-error`;
+  const helperId = `${inputId}-helper`;
 
   const inputClassName =
     variant === "filled"
-      ? `w-full rounded-lg border border-transparent bg-neutral-100 px-3.5 py-2.5 text-sm text-neutral-900 outline-none transition-colors focus:border-sky-500 focus:bg-white focus:ring-2 focus:ring-sky-500/30 disabled:cursor-not-allowed disabled:opacity-60 ${
+      ? `w-full rounded-lg border border-transparent bg-neutral-100 px-3.5 py-2.5 text-sm text-neutral-900 outline-none transition-all duration-200 focus:border-sky-500 focus:bg-white focus:ring-2 focus:ring-sky-500/30 disabled:cursor-not-allowed disabled:opacity-60 ${
           icon ? "pl-10" : ""
         } ${error ? "ring-2 ring-red-300" : ""} ${className ?? ""}`
-      : `w-full rounded-lg border px-3.5 py-2.5 text-sm text-neutral-900 outline-none transition-colors focus:border-sky-500 focus:ring-2 focus:ring-sky-500/30 disabled:cursor-not-allowed disabled:bg-neutral-100 disabled:hover:border-neutral-300 ${
+      : `w-full rounded-lg border px-3.5 py-2.5 text-sm text-neutral-900 outline-none transition-all duration-200 focus:border-sky-500 focus:ring-2 focus:ring-sky-500/30 disabled:cursor-not-allowed disabled:bg-neutral-100 disabled:hover:border-neutral-300 ${
           icon ? "pl-10" : ""
         } ${error ? "border-red-400 hover:border-red-400" : "border-neutral-300 hover:border-neutral-400"} ${
           className ?? ""
@@ -64,7 +70,7 @@ export function FormField({
         <input
           id={inputId}
           aria-invalid={Boolean(error)}
-          aria-describedby={error ? errorId : undefined}
+          aria-describedby={error ? errorId : helperText ? helperId : undefined}
           aria-required={required}
           className={inputClassName}
           {...inputProps}
@@ -73,6 +79,10 @@ export function FormField({
       {error ? (
         <p id={errorId} role="alert" className="text-xs text-red-600">
           {error}
+        </p>
+      ) : helperText ? (
+        <p id={helperId} className="text-xs text-neutral-400">
+          {helperText}
         </p>
       ) : null}
     </div>

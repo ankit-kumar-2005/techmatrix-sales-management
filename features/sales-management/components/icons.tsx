@@ -369,3 +369,53 @@ export function TrashIcon(props: SVGProps<SVGSVGElement>) {
     </Icon>
   );
 }
+
+export function MoreVerticalIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <circle cx="12" cy="5" r="1" fill="currentColor" stroke="none" />
+      <circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" />
+      <circle cx="12" cy="19" r="1" fill="currentColor" stroke="none" />
+    </Icon>
+  );
+}
+
+export function PauseCircleIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M10 9v6M14 9v6" />
+    </Icon>
+  );
+}
+
+export function RefreshIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <path d="M4 12a8 8 0 0 1 14.5-4.5M20 12a8 8 0 0 1-14.5 4.5" />
+      <path d="M18 3v4.5h-4.5M6 21v-4.5h4.5" />
+    </Icon>
+  );
+}
+
+export function DragHandleIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <circle cx="9" cy="6" r="1" fill="currentColor" stroke="none" />
+      <circle cx="9" cy="12" r="1" fill="currentColor" stroke="none" />
+      <circle cx="9" cy="18" r="1" fill="currentColor" stroke="none" />
+      <circle cx="15" cy="6" r="1" fill="currentColor" stroke="none" />
+      <circle cx="15" cy="12" r="1" fill="currentColor" stroke="none" />
+      <circle cx="15" cy="18" r="1" fill="currentColor" stroke="none" />
+    </Icon>
+  );
+}
+
+export function TagIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <path d="M12.6 3.5h5.9a2 2 0 0 1 2 2v5.9a2 2 0 0 1-.6 1.4l-8.4 8.4a2 2 0 0 1-2.8 0l-5.5-5.5a2 2 0 0 1 0-2.8l8.4-8.4a2 2 0 0 1 1-.6z" />
+      <circle cx="16.5" cy="7.5" r="1.25" fill="currentColor" stroke="none" />
+    </Icon>
+  );
+}

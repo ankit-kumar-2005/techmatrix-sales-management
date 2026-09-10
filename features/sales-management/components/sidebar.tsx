@@ -8,6 +8,7 @@ import {
   AutomationsIcon,
   BuildingIcon,
   CatalogIcon,
+  ChevronLeftIcon,
   ChevronRightIcon,
   ContactsIcon,
   ForecastIcon,
@@ -38,9 +39,9 @@ const NAV_ITEMS: NavItem[] = [
   { label: "Pipeline", icon: PipelineIcon, href: "/sales-management" },
   { label: "Lead Capture", icon: LeadCaptureIcon },
   { label: "Automations", icon: AutomationsIcon },
-  { label: "Catalog", icon: CatalogIcon },
+  { label: "Catalog", icon: CatalogIcon, href: "/catalog" },
   { label: "Contacts", icon: ContactsIcon },
-  { label: "Tasks", icon: TasksIcon },
+  { label: "Tasks", icon: TasksIcon, href: "/tasks" },
   { label: "Team", icon: TeamIcon },
   { label: "Forecast", icon: ForecastIcon },
   { label: "Meeting Notes", icon: MeetingNotesIcon },
@@ -52,8 +53,16 @@ const SETTINGS_ITEMS: LinkedNavItem[] = [
   { label: "Profile", icon: ContactsIcon, href: "/settings/profile" },
 ];
 
-const navLinkClass = (isActive: boolean) =>
-  `relative flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-all duration-200 focus-visible:ring-2 focus-visible:ring-sky-400/60 focus-visible:outline-none ${
+// collapsed is a separate arg (not folded into the class string via a
+// ternary on top of the base padding classes) because Tailwind utilities
+// like `px-3` and `px-0` set the same CSS property — whichever one wins
+// depends on the order Tailwind emits them in its generated stylesheet,
+// not the order they appear in the class attribute, so naively appending
+// an override class at the end of the string is not reliable.
+const navLinkClass = (isActive: boolean, collapsed: boolean) =>
+  `relative flex items-center rounded-lg text-sm transition-all duration-200 focus-visible:ring-2 focus-visible:ring-sky-400/60 focus-visible:outline-none ${
+    collapsed ? "justify-center px-0 py-2.5" : "gap-2.5 px-3 py-2"
+  } ${
     isActive
       ? "bg-gradient-to-r from-blue-600 to-violet-600 font-semibold text-white shadow-lg shadow-blue-900/40"
       : "font-medium text-slate-300 hover:bg-white/10 hover:text-white"
@@ -64,9 +73,27 @@ type SidebarProps = {
   userEmail: string;
   userAvatarUrl: string | null;
   onNavigate?: () => void;
+  /** Icon-only narrow layout — driven entirely by the parent (AppShell),
+   *  which owns the collapsed/expanded state and its localStorage
+   *  persistence. Defaults to false so the mobile drawer's own Sidebar
+   *  instance (which never passes this prop) always renders expanded,
+   *  regardless of the desktop preference. */
+  collapsed?: boolean;
+  /** Only passed by the desktop instance in AppShell — its mere presence
+   *  is what makes the collapse toggle button render at all, which is
+   *  how the mobile drawer instance ends up with no toggle of its own
+   *  without needing a separate "is this mobile" flag. */
+  onToggleCollapse?: () => void;
 };
 
-export function Sidebar({ customerName, userEmail, userAvatarUrl, onNavigate }: SidebarProps) {
+export function Sidebar({
+  customerName,
+  userEmail,
+  userAvatarUrl,
+  onNavigate,
+  collapsed = false,
+  onToggleCollapse,
+}: SidebarProps) {
   const pathname = usePathname();
   const isSettingsRoute = pathname.startsWith("/settings");
   const [settingsOpen, setSettingsOpen] = useState(isSettingsRoute);
@@ -95,7 +122,11 @@ export function Sidebar({ customerName, userEmail, userAvatarUrl, onNavigate }: 
           className="pointer-events-none absolute -top-8 right-0 h-32 w-32 rounded-full bg-violet-600/20 blur-3xl"
         />
 
-        <div className="relative flex items-center gap-2.5 px-5 py-5">
+        <div
+          className={`relative flex ${
+            collapsed ? "flex-col items-center gap-2.5 px-2 py-4" : "items-center gap-2.5 px-5 py-5"
+          }`}
+        >
           {/* Same asset the home page's shared Logo component uses
               (components/shared/logo.tsx) — techmatrix-mark.png, the
               cloud icon cropped down from the full wordmark, rather than
@@ -119,12 +150,24 @@ export function Sidebar({ customerName, userEmail, userAvatarUrl, onNavigate }: 
               className="h-7 w-auto"
             />
           </div>
-          <div className="min-w-0 leading-tight">
-            <p className="truncate text-sm font-bold text-white">Techmatrix</p>
-            <p className="truncate text-[10px] font-semibold uppercase tracking-wide text-sky-400">
-              Sales Management
-            </p>
-          </div>
+          {!collapsed ? (
+            <div className="min-w-0 flex-1 leading-tight">
+              <p className="truncate text-sm font-bold text-white">Techmatrix</p>
+              <p className="truncate text-[10px] font-semibold uppercase tracking-wide text-sky-400">
+                Sales Management
+              </p>
+            </div>
+          ) : null}
+          {onToggleCollapse ? (
+            <button
+              type="button"
+              onClick={onToggleCollapse}
+              aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+              className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-white/10 text-slate-300 ring-1 ring-white/10 transition-all duration-200 hover:bg-white/20 hover:text-white focus-visible:ring-2 focus-visible:ring-sky-400/60 focus-visible:outline-none"
+            >
+              <ChevronLeftIcon className={`h-3.5 w-3.5 transition-transform duration-200 ${collapsed ? "rotate-180" : ""}`} />
+            </button>
+          ) : null}
         </div>
 
         {/* Soft gradient-fade divider instead of a flat solid line. */}
@@ -134,9 +177,11 @@ export function Sidebar({ customerName, userEmail, userAvatarUrl, onNavigate }: 
         />
       </div>
 
-      <p className="shrink-0 truncate px-5 pt-4 pb-1 text-xs font-medium text-slate-400" title={customerName}>
-        {customerName}
-      </p>
+      {!collapsed ? (
+        <p className="shrink-0 truncate px-5 pt-4 pb-1 text-xs font-medium text-slate-400" title={customerName}>
+          {customerName}
+        </p>
+      ) : null}
 
       {/* min-h-0 is load-bearing here: a flex child with overflow-y-auto
           still won't actually scroll internally without it — by default
@@ -156,14 +201,22 @@ export function Sidebar({ customerName, userEmail, userAvatarUrl, onNavigate }: 
             if (!item.href) {
               return (
                 <li key={item.label}>
-                  <span className="flex cursor-not-allowed items-center justify-between gap-2 rounded-lg px-3 py-2 text-sm text-slate-500">
-                    <span className="flex items-center gap-2.5">
-                      <Icon className="h-4.5 w-4.5" />
-                      {item.label}
+                  <span
+                    title={collapsed ? `${item.label} (Soon)` : undefined}
+                    aria-label={collapsed ? `${item.label} (coming soon)` : undefined}
+                    className={`flex cursor-not-allowed items-center rounded-lg text-sm text-slate-500 ${
+                      collapsed ? "justify-center px-0 py-2.5" : "justify-between gap-2 px-3 py-2"
+                    }`}
+                  >
+                    <span className={`flex items-center ${collapsed ? "" : "gap-2.5"}`}>
+                      <Icon className="h-4.5 w-4.5 shrink-0" />
+                      {!collapsed ? item.label : null}
                     </span>
-                    <span className="rounded-full bg-white/10 px-2.5 py-1 text-[10px] font-semibold tracking-wider text-slate-300 uppercase ring-1 ring-white/10">
-                      Soon
-                    </span>
+                    {!collapsed ? (
+                      <span className="rounded-full bg-white/10 px-2.5 py-1 text-[10px] font-semibold tracking-wider text-slate-300 uppercase ring-1 ring-white/10">
+                        Soon
+                      </span>
+                    ) : null}
                   </span>
                 </li>
               );
@@ -171,9 +224,16 @@ export function Sidebar({ customerName, userEmail, userAvatarUrl, onNavigate }: 
 
             return (
               <li key={item.label}>
-                <Link href={item.href} onClick={onNavigate} aria-current={isActive ? "page" : undefined} className={navLinkClass(isActive)}>
-                  <Icon className="h-4.5 w-4.5" />
-                  {item.label}
+                <Link
+                  href={item.href}
+                  onClick={onNavigate}
+                  aria-current={isActive ? "page" : undefined}
+                  title={collapsed ? item.label : undefined}
+                  aria-label={collapsed ? item.label : undefined}
+                  className={navLinkClass(isActive, collapsed)}
+                >
+                  <Icon className="h-4.5 w-4.5 shrink-0" />
+                  {!collapsed ? item.label : null}
                 </Link>
               </li>
             );
@@ -181,26 +241,39 @@ export function Sidebar({ customerName, userEmail, userAvatarUrl, onNavigate }: 
         </ul>
 
         <div className="mt-6 border-t border-white/10 pt-4">
-          <p className="px-3 pb-2 text-[10px] font-semibold tracking-wider text-slate-400 uppercase">Settings</p>
+          {!collapsed ? (
+            <p className="px-3 pb-2 text-[10px] font-semibold tracking-wider text-slate-400 uppercase">Settings</p>
+          ) : null}
 
-          <button
-            type="button"
-            onClick={() => setSettingsOpen((open) => !open)}
-            aria-expanded={settingsOpen}
-            aria-controls="sidebar-settings-menu"
-            className={`relative flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-200 focus-visible:ring-2 focus-visible:ring-sky-400/60 focus-visible:outline-none ${
-              isSettingsRoute
-                ? "bg-gradient-to-r from-blue-600 to-violet-600 text-white shadow-lg shadow-blue-900/40"
-                : "text-slate-300 hover:bg-white/10 hover:text-white"
-            }`}
-          >
-            <SettingsIcon className="h-4.5 w-4.5" />
-            Settings
-          </button>
+          {!collapsed ? (
+            <button
+              type="button"
+              onClick={() => setSettingsOpen((open) => !open)}
+              aria-expanded={settingsOpen}
+              aria-controls="sidebar-settings-menu"
+              className={`relative flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-200 focus-visible:ring-2 focus-visible:ring-sky-400/60 focus-visible:outline-none ${
+                isSettingsRoute
+                  ? "bg-gradient-to-r from-blue-600 to-violet-600 text-white shadow-lg shadow-blue-900/40"
+                  : "text-slate-300 hover:bg-white/10 hover:text-white"
+              }`}
+            >
+              <SettingsIcon className="h-4.5 w-4.5 shrink-0" />
+              Settings
+            </button>
+          ) : null}
 
-          {settingsOpen ? (
-            <div className="relative mt-1 ml-[1.15rem] pl-4">
-              <span className="absolute top-0 bottom-0 left-0 w-px bg-white/10" aria-hidden="true" />
+          {/* Collapsed: no room for an indented flyout, so the Settings
+              parent toggle disappears and its sub-items render directly
+              as their own icon-only rows instead — still reachable,
+              still consistent with the main nav's collapsed treatment,
+              just flattened rather than nested. settingsOpen itself is
+              untouched so the nested layout comes back exactly as it was
+              once expanded again. */}
+          {collapsed || settingsOpen ? (
+            <div className={collapsed ? "mt-1" : "relative mt-1 ml-[1.15rem] pl-4"}>
+              {!collapsed ? (
+                <span className="absolute top-0 bottom-0 left-0 w-px bg-white/10" aria-hidden="true" />
+              ) : null}
               <ul id="sidebar-settings-menu" className="flex flex-col gap-1">
                 {SETTINGS_ITEMS.map((item) => {
                   const isActive = pathname === item.href;
@@ -211,10 +284,12 @@ export function Sidebar({ customerName, userEmail, userAvatarUrl, onNavigate }: 
                         href={item.href}
                         onClick={onNavigate}
                         aria-current={isActive ? "page" : undefined}
-                        className={navLinkClass(isActive)}
+                        title={collapsed ? item.label : undefined}
+                        aria-label={collapsed ? item.label : undefined}
+                        className={navLinkClass(isActive, collapsed)}
                       >
-                        <Icon className="h-4.5 w-4.5" />
-                        {item.label}
+                        <Icon className="h-4.5 w-4.5 shrink-0" />
+                        {!collapsed ? item.label : null}
                       </Link>
                     </li>
                   );
@@ -231,7 +306,11 @@ export function Sidebar({ customerName, userEmail, userAvatarUrl, onNavigate }: 
         <Link
           href="/settings/profile"
           onClick={onNavigate}
-          className="flex items-center gap-2.5 rounded-lg p-2 transition-colors duration-150 hover:bg-white/10 focus-visible:ring-2 focus-visible:ring-sky-400/60 focus-visible:outline-none"
+          title={collapsed ? userEmail : undefined}
+          aria-label={collapsed ? `Account settings for ${userEmail}` : undefined}
+          className={`flex items-center rounded-lg p-2 transition-colors duration-150 hover:bg-white/10 focus-visible:ring-2 focus-visible:ring-sky-400/60 focus-visible:outline-none ${
+            collapsed ? "justify-center" : "gap-2.5"
+          }`}
         >
           <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-blue-600 to-violet-600 text-xs font-semibold text-white">
             {userAvatarUrl ? (
@@ -241,8 +320,12 @@ export function Sidebar({ customerName, userEmail, userAvatarUrl, onNavigate }: 
               userEmail.charAt(0).toUpperCase()
             )}
           </span>
-          <span className="min-w-0 flex-1 truncate text-xs font-medium text-slate-200">{userEmail}</span>
-          <ChevronRightIcon className="h-3.5 w-3.5 shrink-0 text-slate-500" aria-hidden="true" />
+          {!collapsed ? (
+            <>
+              <span className="min-w-0 flex-1 truncate text-xs font-medium text-slate-200">{userEmail}</span>
+              <ChevronRightIcon className="h-3.5 w-3.5 shrink-0 text-slate-500" aria-hidden="true" />
+            </>
+          ) : null}
         </Link>
       </div>
     </div>

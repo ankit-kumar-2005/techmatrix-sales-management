@@ -10,7 +10,6 @@ import { LeadsByStage } from "@/features/leads/components/leads-by-stage";
 import { PipelineView } from "@/features/leads/components/pipeline-view";
 import { isWonStage } from "@/features/leads/lib/stage-colors";
 import { ForecastIcon, PipelineIcon, TargetIcon, TrendingUpIcon } from "@/features/sales-management/components/icons";
-import { currencyFormatter } from "@/utils/format";
 
 /**
  * Auth + customer membership are already guarded by
@@ -93,7 +92,8 @@ export default async function SalesManagementPage() {
   const statCards: KpiCardData[] = [
     {
       label: "Open Pipeline Value",
-      value: currencyFormatter.format(sum(openLeads)),
+      value: sum(openLeads),
+      format: "currency",
       caption: `${openLeads.length} open lead${openLeads.length === 1 ? "" : "s"}`,
       icon: <PipelineIcon className="h-4.5 w-4.5" />,
       accent: {
@@ -107,7 +107,8 @@ export default async function SalesManagementPage() {
     },
     {
       label: "Qualified & Proposal Value",
-      value: currencyFormatter.format(sum(qualifiedOrProposalLeads)),
+      value: sum(qualifiedOrProposalLeads),
+      format: "currency",
       caption: `${qualifiedOrProposalLeads.length} lead${qualifiedOrProposalLeads.length === 1 ? "" : "s"} at that stage`,
       icon: <ForecastIcon className="h-4.5 w-4.5" />,
       accent: {
@@ -121,7 +122,8 @@ export default async function SalesManagementPage() {
     },
     {
       label: "Win Rate",
-      value: winRate === null ? "—" : `${winRate}%`,
+      value: winRate,
+      format: "percent",
       caption: `${wonLeads.length} won · ${lostLeads.length} lost`,
       icon: <TargetIcon className="h-4.5 w-4.5" />,
       accent: {
@@ -135,7 +137,8 @@ export default async function SalesManagementPage() {
     },
     {
       label: "Avg. Closed-Won Deal",
-      value: avgClosedWonDeal === null ? "—" : currencyFormatter.format(avgClosedWonDeal),
+      value: avgClosedWonDeal,
+      format: "currency",
       caption: `across ${wonLeads.length} closed-won deal${wonLeads.length === 1 ? "" : "s"}`,
       icon: <TrendingUpIcon className="h-4.5 w-4.5" />,
       accent: {

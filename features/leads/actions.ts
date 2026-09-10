@@ -445,3 +445,100 @@ export async function reorderLeadStageAction(stageId: string, direction: "up" | 
   revalidatePath("/settings/company-information");
   revalidatePath("/sales-management");
 }
+
+export type MoveLeadStageResult = { success: boolean; error?: string };
+
+/**
+ * Changes only a lead's stage_id — the mutation the Pipeline board's
+ * drag-and-drop calls on a successful drop. Deliberately a separate,
+ * smaller action rather than routing drag-and-drop through
+ * updateLeadAction: that action's schema (updateLeadSchema) requires the
+ * lead's entire editable form payload (contact_name, phone, email, ...),
+ * which a drag event never has and shouldn't need to resubmit just to
+ * move one card. What IS reused, line for line, is updateLeadAction's own
+ * authorization/validation logic:
+ *   - closed_at lock check (a closed lead can't be moved, matching the
+ *     "This lead is closed and read-only" rule everywhere else)
+ *   - ownership check (ADMIN, or the lead's own current owner — the same
+ *     rule the "owners or admins can update a lead" RLS policy enforces)
+ *   - target-stage validity (must exist for this customer, must be
+ *     Active) when stage_id is actually changing
+ * All of it is UX only, same as updateLeadAction's own copies of these
+ * checks — protect_lead_stage_transition() (the BEFORE UPDATE trigger)
+ * and the RLS UPDATE policy are what actually hold if this were ever
+ * bypassed. The trigger also computes closed_at itself the moment the
+ * target stage's is_closed is true, so dropping a card into a closed
+ * column (e.g. Won/Lost) locks it automatically — nothing here sets
+ * closed_at directly.
+ */
+export async function moveLeadStageAction(leadId: string, stageId: string): Promise<MoveLeadStageResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    redirect("/login");
+  }
+
+  const membership = await getCurrentMembership(supabase, user.id);
+  if (!membership) {
+    redirect("/signup");
+  }
+
+  const { data: existingLead, error: fetchError } = await supabase
+    .from("leads")
+    .select("id, owner_id, stage_id, closed_at")
+    .eq("id", leadId)
+    .eq("customer_id", membership.customer.id)
+    .maybeSingle();
+
+  if (fetchError || !existingLead) {
+    return { success: false, error: "This lead could not be found." };
+  }
+
+  if (existingLead.closed_at) {
+    return { success: false, error: "This lead is closed and cannot be moved." };
+  }
+
+  const isOwnLead = existingLead.owner_id === membership.membership.id;
+  if (membership.role !== "ADMIN" && !isOwnLead) {
+    return { success: false, error: "You don't have permission to move this lead." };
+  }
+
+  if (stageId !== existingLead.stage_id) {
+    const { data: stage, error: stageError } = await supabase
+      .from("customer_lead_stages")
+      .select("id, status")
+      .eq("id", stageId)
+      .eq("customer_id", membership.customer.id)
+      .maybeSingle();
+
+    if (stageError || !stage) {
+      return { success: false, error: "That stage could not be found." };
+    }
+    if (stage.status !== "Active") {
+      return { success: false, error: "That stage is no longer active." };
+    }
+  }
+
+  const { data: updated, error } = await supabase
+    .from("leads")
+    .update({ stage_id: stageId })
+    .eq("id", leadId)
+    .eq("customer_id", membership.customer.id)
+    .select("id")
+    .maybeSingle();
+
+  if (error) {
+    return { success: false, error: "Something went wrong moving this lead. Please try again." };
+  }
+  if (!updated) {
+    // RLS silently excluded the row (e.g. it closed between the checks
+    // above and this statement) — the database is still the real
+    // boundary even when this action's own checks agree.
+    return { success: false, error: "This lead could not be moved. It may have changed since the board loaded." };
+  }
+
+  revalidatePath("/sales-management");
+  return { success: true };
+}
