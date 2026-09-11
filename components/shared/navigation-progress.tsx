@@ -1,7 +1,52 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { usePathname, useSearchParams } from "next/navigation";
+
+/**
+ * How many route-level loading fallbacks (app/(app)/*\/loading.tsx) are
+ * currently on screen. Module-level rather than React state because the
+ * bar and the fallbacks live in completely different branches of the
+ * tree — the bar is mounted once in the root layout, each fallback is
+ * mounted deep inside whichever route is loading — so there is no
+ * sensible common ancestor to hold this in, and a context provider for
+ * one integer would be more machinery than the problem deserves.
+ */
+let routeLoadingHolds = 0;
+const holdListeners = new Set<(holds: number) => void>();
+
+function notifyHoldListeners() {
+  holdListeners.forEach((listener) => listener(routeLoadingHolds));
+}
+
+/**
+ * Rendered by each route's loading.tsx. Renders nothing — it exists only
+ * to tell NavigationProgress "this route has committed, but its real
+ * content still isn't here."
+ *
+ * WHY THIS EXISTS: adding loading.tsx changes *when* Next commits a
+ * navigation. Without one, the router holds the old page until the new
+ * route's payload is ready, so pathname changes late and the bar
+ * naturally spans the whole wait. With one, Next commits immediately and
+ * shows the fallback — pathname changes within a few milliseconds, which
+ * would make the bar shoot to 100% and vanish while the skeleton sits
+ * there loading. The bar would still technically "appear" on every
+ * navigation, but it would stop meaning anything. This keeps the bar
+ * running until the skeleton is replaced by real content.
+ */
+export function RouteLoadingIndicator() {
+  useEffect(() => {
+    routeLoadingHolds += 1;
+    notifyHoldListeners();
+    return () => {
+      routeLoadingHolds -= 1;
+      notifyHoldListeners();
+    };
+  }, []);
+
+  return null;
+}
 
 /**
  * A thin, blue, top-of-viewport progress bar shown while an internal
@@ -40,6 +85,13 @@ export function NavigationProgress() {
   const isNavigatingRef = useRef(false);
   const trickleTimer = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
   const finishTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const [isMounted, setIsMounted] = useState(false);
+
+  // Gates the portal below — see its own comment for why this is needed.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- createPortal needs a real `document`, which doesn't exist during SSR, so this one-time mount flag is the standard hydration-safe pattern (same exception AppShell takes for its localStorage-backed sidebar preference). One boolean, once, before anything is visible.
+    setIsMounted(true);
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -94,16 +146,63 @@ export function NavigationProgress() {
   }
 
   // FINISH signal — the destination route has taken over the URL bar,
-  // meaning Next has already committed its render. Skipped on the very
-  // first render (mount), which fires with no prior `start()` call.
+  // meaning Next has committed its render. Skipped on the very first
+  // render (mount), which fires with no prior `start()` call.
+  //
+  // Deferred by one macrotask rather than finishing inline: for a route
+  // that has a loading.tsx, the fallback mounts in the SAME commit that
+  // changes the pathname, and effect order between two unrelated
+  // branches of the tree (this bar in the root layout vs. the fallback
+  // deep inside the route) is not something to rely on. A setTimeout(0)
+  // is guaranteed to run after every effect from that commit has flushed,
+  // so `routeLoadingHolds` is accurate by the time it's read.
   const isFirstRender = useRef(true);
+  const awaitingHoldReleaseRef = useRef(false);
   useEffect(() => {
     if (isFirstRender.current) {
       isFirstRender.current = false;
       return;
     }
-    finish();
+
+    const timer = setTimeout(() => {
+      if (routeLoadingHolds > 0) {
+        // A skeleton is on screen — keep trickling until it's replaced.
+        awaitingHoldReleaseRef.current = true;
+        return;
+      }
+      finish();
+    }, 0);
+
+    return () => clearTimeout(timer);
   }, [pathname, searchParams]);
+
+  // The other half of the above: a route whose skeleton was showing has
+  // now been replaced by real content. Routes with no loading.tsx never
+  // register a hold, so they finish on the pathname change alone exactly
+  // as they did before this existed.
+  useEffect(() => {
+    function handleHoldChange(holds: number) {
+      if (holds !== 0 || !awaitingHoldReleaseRef.current) return;
+
+      // Re-check on the next macrotask instead of finishing immediately.
+      // Clicking a second nav item while the first route's skeleton is
+      // still on screen unmounts that skeleton and mounts the next one,
+      // so the count dips 1 → 0 → 1 within a single commit. Reading the
+      // momentary 0 as "the page arrived" would complete the bar mid-
+      // chain and leave the final route with no indicator at all.
+      setTimeout(() => {
+        if (routeLoadingHolds === 0 && awaitingHoldReleaseRef.current) {
+          awaitingHoldReleaseRef.current = false;
+          finish();
+        }
+      }, 0);
+    }
+
+    holdListeners.add(handleHoldChange);
+    return () => {
+      holdListeners.delete(handleHoldChange);
+    };
+  }, []);
 
   // START signal — a capturing document-level click listener, so it
   // doesn't need to be wired into the Sidebar or any individual <Link>.
@@ -147,13 +246,41 @@ export function NavigationProgress() {
     };
   }, []);
 
-  return (
-    <div aria-hidden="true" className="pointer-events-none fixed inset-x-0 top-0 z-[2000]">
+  // PORTALED to document.body, for the same reason Modal is (see its own
+  // comment): `position: fixed` escapes normal layout but does NOT escape
+  // an ancestor's stacking context or containing block. Rendered in place
+  // in the root layout, this bar sat BEFORE {children} in the DOM, so any
+  // later-painted positioned sibling — the sticky sidebar wrapper in
+  // AppShell, a sticky header — could cover it the moment anything
+  // interfered with its z-index taking effect. A portal puts the node
+  // last under <body>, in the root stacking context, independent of
+  // wherever it's invoked from in the React tree.
+  //
+  // zIndex is an INLINE STYLE rather than a `z-[...]` utility so it can't
+  // lose a cascade-layer or specificity fight. App layer ladder:
+  //   30    sticky marketing / mobile headers
+  //   40/50 mobile off-canvas nav drawer
+  //   999   mobile-nav-drawer scrim / 1000 Modal
+  //   1100  success toasts
+  //   ^ this bar sits above all of them, by a wide margin.
+  //
+  // Mounted flag: this is a Client Component but it still server-renders,
+  // and createPortal needs a real `document`. Rendering null until mount
+  // costs nothing visually — the bar is 0-width and fully transparent
+  // until a navigation starts, and a navigation can't start before
+  // hydration anyway.
+  if (!isMounted) {
+    return null;
+  }
+
+  return createPortal(
+    <div aria-hidden="true" style={{ zIndex: 9999 }} className="pointer-events-none fixed inset-x-0 top-0">
       <div
         ref={barRef}
         style={{ width: "0%", opacity: 0 }}
         className="h-[2.5px] bg-gradient-to-r from-sky-500 via-blue-600 to-sky-500"
       />
-    </div>
+    </div>,
+    document.body,
   );
 }
