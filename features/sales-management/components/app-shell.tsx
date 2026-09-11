@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { Suspense, useEffect, useState, type ReactNode } from "react";
 import { Sidebar } from "./sidebar";
+import { NavigationProgress } from "@/components/shared/navigation-progress";
 import { CloseIcon, MenuIcon } from "./icons";
 
 type AppShellProps = {
@@ -112,6 +113,15 @@ export function AppShell({ customerName, userEmail, userAvatarUrl, children }: A
       </div>
 
       <div className="flex min-w-0 flex-1 flex-col">
+        {/* First child of the content column, so the bar spans exactly
+            this column — starting at the sidebar's right edge on desktop
+            (either collapse width) and going full-width below `lg`, where
+            the <aside> is `hidden` and this column is the whole viewport.
+            Suspense because NavigationProgress reads useSearchParams(). */}
+        <Suspense fallback={null}>
+          <NavigationProgress />
+        </Suspense>
+
         <header className="flex items-center gap-3 border-b border-neutral-200 bg-white px-4 py-3 lg:hidden">
           <button
             type="button"

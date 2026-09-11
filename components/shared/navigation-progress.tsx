@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
+import { useEffect, useRef } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 
 /**
@@ -85,13 +84,6 @@ export function NavigationProgress() {
   const isNavigatingRef = useRef(false);
   const trickleTimer = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
   const finishTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const [isMounted, setIsMounted] = useState(false);
-
-  // Gates the portal below — see its own comment for why this is needed.
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- createPortal needs a real `document`, which doesn't exist during SSR, so this one-time mount flag is the standard hydration-safe pattern (same exception AppShell takes for its localStorage-backed sidebar preference). One boolean, once, before anything is visible.
-    setIsMounted(true);
-  }, []);
 
   useEffect(() => {
     return () => {
@@ -208,7 +200,17 @@ export function NavigationProgress() {
   // doesn't need to be wired into the Sidebar or any individual <Link>.
   useEffect(() => {
     function handleClick(event: MouseEvent) {
-      if (event.defaultPrevented || event.button !== 0) return;
+      // NOTE: no `event.defaultPrevented` check, and this listener runs in
+      // the CAPTURE phase (see addEventListener below). Both are load-
+      // bearing. next/link's own click handler calls e.preventDefault()
+      // for every local URL before doing its client-side navigation
+      // (node_modules/next/dist/client/link.js:93). A bubble-phase
+      // listener on `document` therefore sees defaultPrevented === true
+      // for every single sidebar link, and bailing on that meant start()
+      // was never called — the bar stayed at width 0 / opacity 0 and was
+      // invisible on every Link navigation. Capture runs document -> target,
+      // i.e. before React's handler, so the click is still pristine here.
+      if (event.button !== 0) return;
       if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
 
       const anchor = (event.target as HTMLElement | null)?.closest("a");
@@ -238,49 +240,35 @@ export function NavigationProgress() {
       start();
     }
 
-    document.addEventListener("click", handleClick);
+    document.addEventListener("click", handleClick, true);
     window.addEventListener("popstate", handlePopState);
     return () => {
-      document.removeEventListener("click", handleClick);
+      document.removeEventListener("click", handleClick, true);
       window.removeEventListener("popstate", handlePopState);
     };
   }, []);
 
-  // PORTALED to document.body, for the same reason Modal is (see its own
-  // comment): `position: fixed` escapes normal layout but does NOT escape
-  // an ancestor's stacking context or containing block. Rendered in place
-  // in the root layout, this bar sat BEFORE {children} in the DOM, so any
-  // later-painted positioned sibling — the sticky sidebar wrapper in
-  // AppShell, a sticky header — could cover it the moment anything
-  // interfered with its z-index taking effect. A portal puts the node
-  // last under <body>, in the root stacking context, independent of
-  // wherever it's invoked from in the React tree.
+  // Scoped to the MAIN CONTENT COLUMN, not the viewport. AppShell renders
+  // this as the first child of its content column (the flex sibling of
+  // the <aside>), so the column itself defines the bar's left edge and
+  // width — no hardcoded sidebar offset, and nothing to keep in sync when
+  // the sidebar toggles between w-64 and w-[72px], or disappears entirely
+  // below `lg` where the column becomes full-width. The geometry follows
+  // the layout for free.
   //
-  // zIndex is an INLINE STYLE rather than a `z-[...]` utility so it can't
-  // lose a cascade-layer or specificity fight. App layer ladder:
-  //   30    sticky marketing / mobile headers
-  //   40/50 mobile off-canvas nav drawer
-  //   999   mobile-nav-drawer scrim / 1000 Modal
-  //   1100  success toasts
-  //   ^ this bar sits above all of them, by a wide margin.
-  //
-  // Mounted flag: this is a Client Component but it still server-renders,
-  // and createPortal needs a real `document`. Rendering null until mount
-  // costs nothing visually — the bar is 0-width and fully transparent
-  // until a navigation starts, and a navigation can't start before
-  // hydration anyway.
-  if (!isMounted) {
-    return null;
-  }
-
-  return createPortal(
-    <div aria-hidden="true" style={{ zIndex: 9999 }} className="pointer-events-none fixed inset-x-0 top-0">
+  // `sticky top-0` (not `fixed`) keeps it pinned to the top of that column
+  // as the page scrolls. `h-0` means it contributes no height, so adding
+  // it shifts no content down; the 2.5px bar simply overflows the
+  // zero-height sticky box. z-50 clears everything inside the column
+  // (page headers, toolbars, sticky filters) without needing to compete
+  // with the sidebar, modals or toasts, which it no longer overlaps.
+  return (
+    <div aria-hidden="true" className="pointer-events-none sticky top-0 z-50 h-0">
       <div
         ref={barRef}
         style={{ width: "0%", opacity: 0 }}
         className="h-[2.5px] bg-gradient-to-r from-sky-500 via-blue-600 to-sky-500"
       />
-    </div>,
-    document.body,
+    </div>
   );
 }
