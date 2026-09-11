@@ -9,8 +9,8 @@ import { initialCatalogItemFormState } from "../form-state";
 import { CatalogItemFormFields, CatalogItemFormSubmitButton } from "./catalog-item-form-fields";
 
 type NewCatalogItemDialogProps = {
-  /** "button" (default) renders the pill "New item" trigger used in the
-   *  page header. "ghostCard" renders a dashed, grid-shaped trigger
+  /** "button" (default) renders the "+ Add item" pill trigger used in
+   *  the page header. "ghostCard" renders a dashed, grid-shaped trigger
    *  meant to sit as the last tile in the items grid — a second,
    *  purely visual entry point to the *same* createCatalogItemAction
    *  flow, not a second piece of creation logic. Each variant owns its
@@ -21,11 +21,16 @@ type NewCatalogItemDialogProps = {
    *  choice of trigger. */
   variant?: "button" | "ghostCard";
   /** Called after a successful create (in addition to closing the
-   *  dialog) — CatalogItemsGrid uses this to reset its search/category
-   *  filter and jump back to page 1, so a newly created item is
-   *  visible immediately regardless of whatever filter/page the caller
-   *  was previously looking at. Optional so this dialog still works if
-   *  a future consumer has no such grid to refresh. */
+   *  dialog). The two "ghostCard" instances inside CatalogItemsGrid pass
+   *  a callback that resets its search/category filter and jumps back to
+   *  page 1, so a newly created item is visible immediately regardless
+   *  of whatever filter/page the caller was previously looking at. The
+   *  header ("button") instance is a separate mount owned by
+   *  CatalogPageClient, one level up — its own onSuccess only bumps a
+   *  shared refreshToken, since it has no direct access to the grid's
+   *  own internal filter state (see CatalogPageClient's own comment on
+   *  that tradeoff). Optional so this dialog still works if a future
+   *  consumer has no such grid to refresh at all. */
   onSuccess?: () => void;
 };
 
@@ -91,13 +96,21 @@ export function NewCatalogItemDialog({ variant = "button", onSuccess }: NewCatal
           <span className="text-sm font-semibold">Add item</span>
         </button>
       ) : (
+        // Header trigger — same background/text/radius/hover/shadow/
+        // typography/icon as Pipeline's own "+ New Lead" button
+        // (create-lead-dialog.tsx), reused verbatim rather than a new
+        // color invented for this page, per the explicit "Catalog should
+        // feel like the same application action" requirement. Only ever
+        // rendered in the page HEADER now (CatalogPageClient) — the
+        // in-grid toolbar instance this variant used to serve was
+        // removed, not just restyled in place.
         <button
           type="button"
           onClick={() => setIsOpen(true)}
-          className="flex min-h-11 items-center gap-2 rounded-full bg-gradient-to-r from-teal-600 to-teal-800 px-5 py-2.5 text-sm font-semibold text-white shadow-sm shadow-teal-700/20 transition-all duration-200 hover:-translate-y-0.5 hover:from-teal-700 hover:to-teal-900 hover:shadow-lg hover:shadow-teal-700/30 focus-visible:ring-2 focus-visible:ring-teal-500/40 focus-visible:ring-offset-2 focus-visible:outline-none"
+          className="flex min-h-11 items-center gap-2 rounded-full bg-gradient-to-r from-blue-600 to-violet-600 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-blue-600/30 transition-all duration-200 hover:-translate-y-0.5 hover:from-blue-700 hover:to-violet-700 hover:shadow-xl hover:shadow-blue-600/40 focus-visible:ring-2 focus-visible:ring-sky-500/40 focus-visible:ring-offset-2 focus-visible:outline-none"
         >
           <PlusIcon className="h-4 w-4 shrink-0" />
-          New item
+          Add item
         </button>
       )}
 

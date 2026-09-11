@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getFieldErrors } from "@/features/auth/lib/get-field-errors";
 import { getCurrentMembership } from "@/features/customers/lib/get-current-membership";
-import { createTaskSchema } from "./schemas";
+import { createTaskSchema, updateTaskSchema } from "./schemas";
 import { getTasksBucketPage, type TasksBucketPage, type TasksBucketPageParams } from "./lib/get-tasks";
 import type { TaskFormState } from "./form-state";
 
@@ -67,6 +67,80 @@ export async function createTaskAction(_prevState: TaskFormState, formData: Form
     // caller is currently allowed to see/assign — RLS silently rejects
     // rather than naming which check failed.
     return { formError: "Unable to create this task. The lead or assignee may not be available to you." };
+  }
+
+  revalidatePath("/tasks");
+  revalidatePath("/sales-management");
+  return { success: true };
+}
+
+/**
+ * lead_id is never read from the form (see updateTaskSchema's own
+ * comment) — it's immutable, enforced independently by
+ * protect_task_identity_columns regardless of what this action does.
+ *
+ * AUTHORIZATION: identical shape to createTaskAction's assignment
+ * handling — the caller's submitted assigned_to passes straight through
+ * to the UPDATE, and RLS's "visible-hierarchy members can update a task"
+ * policy (is_customer_user_visible(assigned_to) on both USING and WITH
+ * CHECK) is the real boundary: it independently re-verifies both that
+ * the caller may currently see/update THIS task (its EXISTING
+ * assigned_to) and that whoever they're reassigning it to is within
+ * their own visible hierarchy. This is the SAME predicate the SELECT
+ * policy uses, so any task a caller can currently see is one they're
+ * already authorized to update — no separate role check needs
+ * duplicating here first. status is a normal editable field here (unlike
+ * createTaskAction, where a new task always starts 'Pending') — this is
+ * a second, alternate path to completing/reopening a task besides
+ * completeTaskAction's own checkbox-driven one, going through the exact
+ * same RLS policy either way.
+ */
+export async function updateTaskAction(_prevState: TaskFormState, formData: FormData): Promise<TaskFormState> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  const membership = await getCurrentMembership(supabase, user.id);
+  if (!membership) {
+    redirect("/signup");
+  }
+
+  const parsed = updateTaskSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) {
+    return { fieldErrors: getFieldErrors(parsed.error) };
+  }
+
+  const { data: updated, error } = await supabase
+    .from("tasks")
+    .update({
+      subject: parsed.data.subject,
+      description: parsed.data.description ?? null,
+      priority: parsed.data.priority,
+      due_date: parsed.data.due_date,
+      assigned_to: parsed.data.assigned_to,
+      type: parsed.data.type,
+      status: parsed.data.status,
+    })
+    .eq("id", parsed.data.id)
+    .eq("customer_id", membership.customer.id)
+    .select("id")
+    .maybeSingle();
+
+  if (error) {
+    return { formError: "Unable to update this task. The assignee may not be available to you." };
+  }
+  if (!updated) {
+    // RLS silently excluded the row — the caller can no longer see/edit
+    // this task (e.g. its assignee changed since the page loaded), or it
+    // never belonged to their customer. The database is still the real
+    // boundary even when the UI only ever showed them tasks it believed
+    // they could edit.
+    return { formError: "This task could not be updated. It may no longer be available to you." };
   }
 
   revalidatePath("/tasks");

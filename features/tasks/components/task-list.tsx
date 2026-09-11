@@ -4,16 +4,27 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { MessageBanner } from "@/components/shared/message-banner";
 import { getOwnerAvatarColor, getOwnerDisplayLabels, getOwnerInitials, getOwnerTooltip } from "@/features/leads/lib/owner-display";
 import { completeTaskAction, getTasksBucketPageAction } from "../actions";
-import { AddTaskDialog } from "./add-task-dialog";
 import { TaskDetailModal } from "./task-detail-modal";
-import { ChevronDownIcon, PlusIcon, SearchIcon } from "@/features/sales-management/components/icons";
+import { EditTaskDialog } from "./edit-task-dialog";
+import { LeadSearchSelect } from "@/features/leads/components/lead-search-select";
+import { ChevronDownIcon, LeadCaptureIcon, PencilIcon, SearchIcon } from "@/features/sales-management/components/icons";
 import { dateFormatter } from "@/utils/format";
-import { TASK_TYPES } from "@/types/task";
+import { TASK_PRIORITIES, TASK_TYPES } from "@/types/task";
 import type { TaskDueBucket, TasksBucketPage } from "../lib/get-tasks";
 import type { Task, TaskPriority } from "@/types/task";
 import type { Lead, TeamDirectoryEntry } from "@/types/lead";
 
-const GROUP_PAGE_SIZE = 10;
+// The Rows-per-page choices and their default — same three options and
+// same default the Pipeline List View's own "Rows per page" selector
+// already uses (pipeline-view.tsx), reused here as a literal, not a
+// shared constant: Pipeline paginates a fully-client-side TanStack Table
+// (page size only ever slices an array already in memory), while Tasks
+// paginates server-side per due-date bucket (page size is a real query
+// parameter) — the UI convention is what's shared, not the underlying
+// mechanism, so there's no single constant that would honestly serve
+// both without conflating two different architectures.
+const PAGE_SIZE_OPTIONS = [10, 15, 20] as const;
+const DEFAULT_PAGE_SIZE = 10;
 const SEARCH_DEBOUNCE_MS = 300;
 
 const controlClass =
@@ -107,15 +118,36 @@ type TaskListProps = {
   initialSearch: string;
   initialOwnerId: string;
   initialType: string;
+  /** Not part of the original Tasks filter set — added alongside the
+   *  Lead filter since the business spec's own combined-filter examples
+   *  ("Lead + Priority=High + Type=Call") depend on it, same shape as
+   *  initialType immediately above. */
+  initialPriority: string;
   initialStatus: string;
   /** "" (All — all three buckets render) or one specific bucket. */
   initialDueBucket: TaskDueBucket | "";
+  /** "" (All leads) or a specific lead_id — the primary addition this
+   *  round: lets a user find every Task tied to one Lead (tasks.lead_id),
+   *  read from the URL's own searchParams the same way every other
+   *  filter here already is. */
+  initialLeadId: string;
   leads: Lead[];
   /** The caller's own hierarchy-visible teammates — used both for the
    *  Owner filter and for resolving each task's assignee display, same
    *  source AddTaskDialog's Assign picker uses. */
   assignableUsers: TeamDirectoryEntry[];
+  /** Needed by EditTaskDialog's own Assign field default — the same
+   *  value the page-level "+ Add task" dialog (TasksPageClient) already
+   *  has and uses for its own create-mode default. */
   currentUserCustomerUserId: string;
+  /** Bumped by the page-level "New task" dialog's onSuccess (owned by the
+   *  shared client ancestor, TasksPageClient, since that button now lives
+   *  in the page HEADER — top-right, next to the heading — not inside
+   *  this component's own toolbar) — forces every visible bucket to
+   *  re-fetch so a newly created task shows up without a browser refresh.
+   *  Same relationship ContactList/ContactsPageClient already has. */
+  refreshToken: number;
+  onRefreshAll: () => void;
 };
 
 /**
@@ -145,20 +177,27 @@ export function TaskList({
   initialSearch,
   initialOwnerId,
   initialType,
+  initialPriority,
   initialStatus,
   initialDueBucket,
+  initialLeadId,
   leads,
   assignableUsers,
   currentUserCustomerUserId,
+  refreshToken,
+  onRefreshAll,
 }: TaskListProps) {
   const [searchInput, setSearchInput] = useState(initialSearch);
   const [committedSearch, setCommittedSearch] = useState(initialSearch);
   const [ownerFilter, setOwnerFilter] = useState(initialOwnerId);
   const [typeFilter, setTypeFilter] = useState(initialType);
+  const [priorityFilter, setPriorityFilter] = useState(initialPriority);
   const [statusFilter, setStatusFilter] = useState(initialStatus);
   const [dueBucketFilter, setDueBucketFilter] = useState<TaskDueBucket | "">(initialDueBucket);
-  const [refreshToken, setRefreshToken] = useState(0);
+  const [leadFilter, setLeadFilter] = useState(initialLeadId);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [detailTask, setDetailTask] = useState<Task | null>(null);
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
   // Debounce: only the committed value drives an actual fetch in each
@@ -189,14 +228,18 @@ export function TaskList({
     if (committedSearch) params.set("q", committedSearch);
     if (ownerFilter) params.set("owner", ownerFilter);
     if (typeFilter) params.set("type", typeFilter);
+    if (priorityFilter) params.set("priority", priorityFilter);
     if (statusFilter) params.set("status", statusFilter);
     if (dueBucketFilter) params.set("due", dueBucketFilter);
+    if (leadFilter) params.set("lead", leadFilter);
     const queryString = params.toString();
     const url = queryString ? `${window.location.pathname}?${queryString}` : window.location.pathname;
     window.history.replaceState(null, "", url);
-  }, [committedSearch, ownerFilter, typeFilter, statusFilter, dueBucketFilter]);
+  }, [committedSearch, ownerFilter, typeFilter, priorityFilter, statusFilter, dueBucketFilter, leadFilter]);
 
-  const hasActiveFilters = Boolean(searchInput || ownerFilter || typeFilter || statusFilter || dueBucketFilter);
+  const hasActiveFilters = Boolean(
+    searchInput || ownerFilter || typeFilter || priorityFilter || statusFilter || dueBucketFilter || leadFilter,
+  );
 
   const leadsById = useMemo(() => new Map(leads.map((lead) => [lead.id, lead])), [leads]);
 
@@ -222,8 +265,10 @@ export function TaskList({
     setCommittedSearch("");
     setOwnerFilter("");
     setTypeFilter("");
+    setPriorityFilter("");
     setStatusFilter("");
     setDueBucketFilter("");
+    setLeadFilter("");
   }
 
   // The task detail modal isn't scoped to any one bucket's own local
@@ -237,7 +282,7 @@ export function TaskList({
       setActionError(result.error ?? "Unable to complete this task. Please try again.");
       return;
     }
-    setRefreshToken((token) => token + 1);
+    onRefreshAll();
   }
 
   // Due Date = All renders all three buckets; a specific Due Date value
@@ -251,14 +296,15 @@ export function TaskList({
       <div className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-black/5">
         <div className="border-b border-neutral-100 p-4 sm:p-5">
           {/* Filters wrap onto additional lines instead of forcing every
-              control onto one un-scrollable row — six fixed-width
-              controls plus Add Task never fit on a single line at normal
-              desktop widths, and the previous sm:overflow-x-auto +
-              sm:flex-nowrap combination turned that overflow into a
-              horizontal scrollbar that pushed Add Task off-screen instead
-              of letting it wrap. Add Task itself now lives in its own row
-              below, always visible, never competing with the filters for
-              horizontal space. */}
+              control onto one un-scrollable row — these controls don't
+              reliably fit on a single line at normal desktop widths, and
+              a previous sm:overflow-x-auto + sm:flex-nowrap combination
+              turned that overflow into a horizontal scrollbar that pushed
+              content off-screen instead of letting it wrap. "+ Add task"
+              itself no longer lives here at all — it's in the page
+              HEADER now (top-right, next to the heading, owned by
+              TasksPageClient), matching where Contacts' "+ New contact"
+              already lives. */}
           <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3">
             <div className="group relative w-full sm:min-w-[10rem] sm:flex-1">
               <SearchIcon className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-neutral-400 transition-colors group-focus-within:text-sky-500" />
@@ -268,6 +314,27 @@ export function TaskList({
                 onChange={(event) => setSearchInput(event.target.value)}
                 placeholder="Search tasks or leads..."
                 className={`${controlClass} w-full pl-9`}
+              />
+            </div>
+
+            {/* The primary addition this round — "quickly find all Tasks
+                associated with a Lead." Controlled mode (value/onChange,
+                no `name`) + hideLabel, the exact same pattern
+                ContactList's own Lead filter already established: only
+                Leads the caller can already see (the same RLS-scoped
+                `leads` array AddTaskDialog/EditTaskDialog use) ever
+                appear here, so a cross-tenant Lead can never be
+                selected — the server query re-scopes to customer_id and
+                RLS independently regardless. */}
+            <div className="w-full shrink-0 sm:w-64">
+              <LeadSearchSelect
+                id="task-lead-filter"
+                label="Lead"
+                hideLabel
+                leads={leads}
+                value={leadFilter}
+                onChange={setLeadFilter}
+                placeholder="All leads — search by name, company, email, or phone..."
               />
             </div>
 
@@ -297,6 +364,22 @@ export function TaskList({
                 {TASK_TYPES.map((type) => (
                   <option key={type} value={type}>
                     {type}
+                  </option>
+                ))}
+              </select>
+              <ChevronDownIcon className="pointer-events-none absolute top-1/2 right-3 h-4 w-4 -translate-y-1/2 text-neutral-400" />
+            </div>
+
+            <div className="relative w-full shrink-0 sm:w-32">
+              <select
+                value={priorityFilter}
+                onChange={(event) => setPriorityFilter(event.target.value)}
+                className={`${selectControlClass} truncate`}
+              >
+                <option value="">All priorities</option>
+                {TASK_PRIORITIES.map((priority) => (
+                  <option key={priority} value={priority}>
+                    {priority}
                   </option>
                 ))}
               </select>
@@ -339,32 +422,6 @@ export function TaskList({
               Reset
             </button>
           </div>
-
-          {/* Its own row, right-aligned on desktop — always clearly
-              visible in the top-right of the card, never clipped or
-              requiring horizontal scroll to reach. Full-width on mobile,
-              the cleanest responsive behavior per the design spec. Same
-              AddTaskDialog/trigger button as before: same handler, same
-              styling, same Create Task dialog — only its position in the
-              layout changed. */}
-          <div className="mt-3 flex justify-end">
-            <AddTaskDialog
-              leads={leads}
-              assignableUsers={assignableUsers}
-              currentUserCustomerUserId={currentUserCustomerUserId}
-              onSuccess={() => setRefreshToken((token) => token + 1)}
-              renderTrigger={(open) => (
-                <button
-                  type="button"
-                  onClick={open}
-                  className="flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-blue-600 to-violet-600 px-4 text-sm font-semibold text-white shadow-sm shadow-blue-600/20 transition-all duration-200 hover:from-blue-700 hover:to-violet-700 hover:shadow-md focus-visible:ring-2 focus-visible:ring-sky-500/40 focus-visible:outline-none sm:w-auto"
-                >
-                  <PlusIcon className="h-4 w-4 shrink-0" />
-                  Add task
-                </button>
-              )}
-            />
-          </div>
         </div>
 
         <div className="p-4 sm:p-6">
@@ -395,17 +452,48 @@ export function TaskList({
                 search={committedSearch}
                 ownerId={ownerFilter}
                 type={typeFilter}
+                priority={priorityFilter}
                 status={statusFilter}
                 dueBucketFilterKey={dueBucketFilter}
+                leadId={leadFilter}
+                pageSize={pageSize}
                 refreshToken={refreshToken}
                 leadsById={leadsById}
                 assigneeDisplayById={assigneeDisplayById}
                 onView={setDetailTask}
+                onEdit={setEditingTask}
                 onError={setActionError}
-                onRefreshAll={() => setRefreshToken((token) => token + 1)}
+                onRefreshAll={onRefreshAll}
               />
             ))}
           </div>
+        </div>
+
+        {/* BELOW the task list, on the LEFT — same "Rows per page"
+            label/select markup and options (10/15/20) as the Pipeline
+            List View's own selector (pipeline-view.tsx), just relocated
+            here from the toolbar above. Each bucket still owns its own
+            independent Previous/Next (Tasks paginates per due-date
+            bucket, not as one flat list the way Pipeline does), so this
+            is a single shared control for the one thing that IS shared
+            across every bucket — page size — rather than an attempt to
+            merge three independent paginated lists into Pipeline's
+            single-footer shape, which would be a materially different
+            (and unrequested) pagination architecture change. */}
+        <div className="flex items-center gap-2 border-t border-neutral-100 px-4 py-3 text-xs text-neutral-500 sm:px-6">
+          <label htmlFor="task-rows-per-page">Rows per page</label>
+          <select
+            id="task-rows-per-page"
+            value={pageSize}
+            onChange={(event) => setPageSize(Number(event.target.value))}
+            className="h-8 rounded-lg border border-neutral-300 bg-white px-2 text-xs text-neutral-700 outline-none transition-colors hover:border-neutral-400 focus:border-sky-500 focus:ring-2 focus:ring-sky-500/30"
+          >
+            {PAGE_SIZE_OPTIONS.map((size) => (
+              <option key={size} value={size}>
+                {size}
+              </option>
+            ))}
+          </select>
         </div>
       </div>
 
@@ -424,6 +512,19 @@ export function TaskList({
           onClose={() => setDetailTask(null)}
         />
       ) : null}
+
+      {editingTask ? (
+        <EditTaskDialog
+          task={editingTask}
+          leads={leads}
+          assignableUsers={assignableUsers}
+          currentUserCustomerUserId={currentUserCustomerUserId}
+          onClose={() => {
+            setEditingTask(null);
+            onRefreshAll();
+          }}
+        />
+      ) : null}
     </>
   );
 }
@@ -440,6 +541,7 @@ type TaskGroupSectionProps = {
   search: string;
   ownerId: string;
   type: string;
+  priority: string;
   status: string;
   /** The CURRENT Due Date filter value (not this section's own bucket,
    *  which never changes across this component's lifetime) — included
@@ -448,10 +550,17 @@ type TaskGroupSectionProps = {
    *  change (e.g. Due Date going from "All" to "Today" while the Today
    *  section stays mounted) — see the synced-state block below. */
   dueBucketFilterKey: TaskDueBucket | "";
+  leadId: string;
+  /** Rows to fetch per page (10/15/20, shared across every bucket) —
+   *  included in the synced-diff below for the same reason
+   *  dueBucketFilterKey is: changing it must reset this bucket's own
+   *  pagination back to page 1. */
+  pageSize: number;
   refreshToken: number;
   leadsById: Map<string, Lead>;
   assigneeDisplayById: Map<string, OwnerDisplay>;
   onView: (task: Task) => void;
+  onEdit: (task: Task) => void;
   onError: (message: string) => void;
   /** Bumps the PARENT's refreshToken — used after this section's own
    *  row-level complete succeeds, since completing a task changes its
@@ -475,12 +584,16 @@ function TaskGroupSection({
   search,
   ownerId,
   type,
+  priority,
   status,
   dueBucketFilterKey,
+  leadId,
+  pageSize,
   refreshToken,
   leadsById,
   assigneeDisplayById,
   onView,
+  onEdit,
   onError,
   onRefreshAll,
 }: TaskGroupSectionProps) {
@@ -507,20 +620,29 @@ function TaskGroupSection({
   const [syncedSearch, setSyncedSearch] = useState(search);
   const [syncedOwnerId, setSyncedOwnerId] = useState(ownerId);
   const [syncedType, setSyncedType] = useState(type);
+  const [syncedPriority, setSyncedPriority] = useState(priority);
   const [syncedStatus, setSyncedStatus] = useState(status);
   const [syncedDueBucketFilterKey, setSyncedDueBucketFilterKey] = useState(dueBucketFilterKey);
+  const [syncedLeadId, setSyncedLeadId] = useState(leadId);
+  const [syncedPageSize, setSyncedPageSize] = useState(pageSize);
   if (
     search !== syncedSearch ||
     ownerId !== syncedOwnerId ||
     type !== syncedType ||
+    priority !== syncedPriority ||
     status !== syncedStatus ||
-    dueBucketFilterKey !== syncedDueBucketFilterKey
+    dueBucketFilterKey !== syncedDueBucketFilterKey ||
+    leadId !== syncedLeadId ||
+    pageSize !== syncedPageSize
   ) {
     setSyncedSearch(search);
     setSyncedOwnerId(ownerId);
     setSyncedType(type);
+    setSyncedPriority(priority);
     setSyncedStatus(status);
     setSyncedDueBucketFilterKey(dueBucketFilterKey);
+    setSyncedLeadId(leadId);
+    setSyncedPageSize(pageSize);
     setPage(0);
   }
 
@@ -542,7 +664,7 @@ function TaskGroupSection({
     let cancelled = false;
     setIsLoading(true);
 
-    const requestParams = { bucket, todayStr, status, search, ownerId, type, page, pageSize: GROUP_PAGE_SIZE };
+    const requestParams = { bucket, todayStr, status, search, ownerId, type, priority, leadId, page, pageSize };
     if (process.env.NODE_ENV !== "production") {
       // TEMPORARY — remove once the Status filter is confirmed correct in
       // a live test. Proves what this specific fetch actually asked for.
@@ -570,7 +692,7 @@ function TaskGroupSection({
         // on. Rather than commit an empty result for a now out-of-range
         // page, clamp to the new last valid page and let that trigger
         // one more (correct) fetch.
-        const resultPageCount = Math.max(Math.ceil(result.totalCount / GROUP_PAGE_SIZE), 1);
+        const resultPageCount = Math.max(Math.ceil(result.totalCount / pageSize), 1);
         if (page > resultPageCount - 1) {
           setTotalCount(result.totalCount);
           setIsLoading(false);
@@ -588,9 +710,9 @@ function TaskGroupSection({
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- todayStr/initialTodayStr/initialPage are intentionally read via closure above rather than listed: they only matter for the very first run (guarded by isFirstRun), and re-including them here would re-run this effect on every render since todayStr is recomputed fresh each time
-  }, [bucket, search, ownerId, type, status, page, refreshToken]);
+  }, [bucket, search, ownerId, type, priority, status, leadId, page, pageSize, refreshToken]);
 
-  const pageCount = Math.max(Math.ceil(totalCount / GROUP_PAGE_SIZE), 1);
+  const pageCount = Math.max(Math.ceil(totalCount / pageSize), 1);
   const currentPage = Math.min(page, pageCount - 1);
 
   async function handleComplete(task: Task) {
@@ -643,6 +765,7 @@ function TaskGroupSection({
               assignee={assigneeDisplayById.get(task.assigned_to)}
               onComplete={() => handleComplete(task)}
               onView={() => onView(task)}
+              onEdit={() => onEdit(task)}
             />
           ))
         )}
@@ -658,31 +781,41 @@ function TaskGroupSection({
         ) : null}
       </div>
 
-      {pageCount > 1 ? (
-        <div className="mt-3 flex flex-col items-center justify-end gap-2 sm:flex-row">
-          <p className="text-xs font-medium text-neutral-600">
-            Page {currentPage + 1} of {pageCount}
-          </p>
-          <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={() => setPage((current) => Math.max(current - 1, 0))}
-              disabled={currentPage === 0}
-              className="h-8 rounded-lg border border-neutral-300 px-3 text-xs font-semibold text-neutral-700 transition-colors hover:border-neutral-400 hover:bg-neutral-50 focus-visible:ring-2 focus-visible:ring-sky-500/40 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              Previous
-            </button>
-            <button
-              type="button"
-              onClick={() => setPage((current) => Math.min(current + 1, pageCount - 1))}
-              disabled={currentPage >= pageCount - 1}
-              className="h-8 rounded-lg border border-neutral-300 px-3 text-xs font-semibold text-neutral-700 transition-colors hover:border-neutral-400 hover:bg-neutral-50 focus-visible:ring-2 focus-visible:ring-sky-500/40 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              Next
-            </button>
-          </div>
+      {/* Always rendered, regardless of pageCount — previously gated on
+          pageCount > 1, which meant these controls simply didn't exist in
+          the DOM whenever this bucket's filtered result fit on one page
+          (the common case for a narrow Lead/search filter), reading as
+          "no way to paginate" rather than "disabled." The real `disabled`
+          attribute (unchanged below) is what actually makes first/last
+          page unreachable and lets screen readers/keyboard nav skip them
+          — this only changes whether the buttons exist at all, matching
+          the identical fix already applied to ContactList's own
+          pagination footer. */}
+      <div className="mt-3 flex flex-col items-center justify-end gap-2 sm:flex-row">
+        <p className="text-xs font-medium text-neutral-600">
+          Page {currentPage + 1} of {pageCount}
+        </p>
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => setPage((current) => Math.max(current - 1, 0))}
+            disabled={currentPage === 0}
+            aria-label="Previous page"
+            className="h-8 rounded-lg border border-neutral-300 px-3 text-xs font-semibold text-neutral-700 transition-colors hover:border-neutral-400 hover:bg-neutral-50 focus-visible:ring-2 focus-visible:ring-sky-500/40 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Previous
+          </button>
+          <button
+            type="button"
+            onClick={() => setPage((current) => Math.min(current + 1, pageCount - 1))}
+            disabled={currentPage >= pageCount - 1}
+            aria-label="Next page"
+            className="h-8 rounded-lg border border-neutral-300 px-3 text-xs font-semibold text-neutral-700 transition-colors hover:border-neutral-400 hover:bg-neutral-50 focus-visible:ring-2 focus-visible:ring-sky-500/40 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Next
+          </button>
         </div>
-      ) : null}
+      </div>
     </div>
   );
 }
@@ -694,16 +827,17 @@ type TaskRowProps = {
   assignee?: OwnerDisplay;
   onComplete: () => void;
   onView: () => void;
+  onEdit: () => void;
 };
 
-function TaskRow({ task, tone, lead, assignee, onComplete, onView }: TaskRowProps) {
+function TaskRow({ task, tone, lead, assignee, onComplete, onView, onEdit }: TaskRowProps) {
   const isCompleted = task.status === "Completed";
   const formattedDue = dateFormatter.format(parseDateOnly(task.due_date));
   const dueLabel =
     tone === "overdue" ? `Overdue · ${formattedDue}` : tone === "today" ? "Due today" : `Due ${formattedDue}`;
 
   return (
-    <div className="flex items-start gap-3 rounded-xl bg-white p-4 shadow-sm ring-1 ring-black/5 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
+    <div className="group relative flex items-start gap-3 rounded-xl bg-white p-4 shadow-sm ring-1 ring-black/5 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
       <button
         type="button"
         onClick={(event) => {
@@ -725,10 +859,29 @@ function TaskRow({ task, tone, lead, assignee, onComplete, onView }: TaskRowProp
         ) : null}
       </button>
 
-      <button type="button" onClick={onView} className="min-w-0 flex-1 text-left">
+      <button type="button" onClick={onView} className="min-w-0 flex-1 pr-9 text-left">
         <p className={`text-sm font-semibold ${isCompleted ? "text-neutral-400 line-through" : "text-neutral-900"}`}>
           {task.subject}
         </p>
+
+        {/* The business requirement this satisfies: "which Lead does
+            this Task belong to" must be answerable without opening the
+            task — a colored badge on its own line (not blended into the
+            other meta chips below, unlike Assignee/Due/Type) so it reads
+            as a distinct, first-class piece of information. Same visual
+            treatment ContactRow's own Lead badge already established,
+            reused here for consistency rather than a third variant. */}
+        {lead ? (
+          <p className="mt-1">
+            <span className="inline-flex max-w-full items-center gap-1 rounded-full bg-sky-50 px-2 py-0.5 text-[10px] font-bold text-sky-700 ring-1 ring-sky-100">
+              <LeadCaptureIcon className="h-2.5 w-2.5 shrink-0" />
+              <span className="truncate">
+                {lead.company ? `${lead.company} — ${lead.contact_name}` : lead.contact_name}
+              </span>
+            </span>
+          </p>
+        ) : null}
+
         <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
           <span
             className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold tracking-wide uppercase ${PRIORITY_BADGE_CLASSES[task.priority]}`}
@@ -751,11 +904,31 @@ function TaskRow({ task, tone, lead, assignee, onComplete, onView }: TaskRowProp
             </span>
           ) : null}
           <span className={tone === "overdue" ? "font-semibold text-rose-600" : "text-neutral-500"}>{dueLabel}</span>
-          {lead ? (
-            <span className="text-sky-700">{lead.company ? `${lead.company} — ${lead.contact_name}` : lead.contact_name}</span>
-          ) : null}
           <span className="text-neutral-400">{task.type}</span>
         </div>
+      </button>
+
+      {/* Edit is always authorized for any listed task — Tasks' SELECT
+          and UPDATE RLS policies use the IDENTICAL predicate
+          (is_customer_user_visible(assigned_to)), so if a task appears
+          here at all, the caller is already authorized to update it; no
+          client-side canEdit gate is needed. updateTaskAction/RLS remain
+          the real boundary regardless — see EditTaskDialog's own
+          comment. Hidden by default on desktop (revealed on hover/
+          focus via the row's own group), always visible below the sm
+          breakpoint since touch devices have no hover state to reveal it
+          with — same pattern as ContactRow's identical pencil. */}
+      <button
+        type="button"
+        onClick={(event) => {
+          event.stopPropagation();
+          onEdit();
+        }}
+        title="Edit task"
+        aria-label={`Edit ${task.subject}`}
+        className="absolute top-3 right-3 inline-flex h-8 w-8 items-center justify-center rounded-lg text-neutral-500 opacity-100 transition-colors hover:bg-neutral-100 hover:text-neutral-900 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-sky-500/40 focus-visible:outline-none sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
+      >
+        <PencilIcon className="h-3.5 w-3.5" />
       </button>
     </div>
   );

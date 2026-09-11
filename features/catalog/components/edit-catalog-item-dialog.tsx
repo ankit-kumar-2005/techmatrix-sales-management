@@ -1,9 +1,10 @@
 "use client";
 
 import { useActionState, useEffect, useState } from "react";
+import type { ReactNode } from "react";
 import { Modal } from "@/components/shared/modal";
 import { MessageBanner } from "@/components/shared/message-banner";
-import { PencilIcon, TagIcon } from "@/features/sales-management/components/icons";
+import { TagIcon } from "@/features/sales-management/components/icons";
 import { updateCatalogItemAction } from "../actions";
 import { initialCatalogItemFormState } from "../form-state";
 import { CatalogItemFormFields, CatalogItemFormSubmitButton } from "./catalog-item-form-fields";
@@ -18,25 +19,34 @@ type EditCatalogItemDialogProps = {
    *  NewCatalogItemDialog's own onSuccess). Optional so this dialog
    *  still works if a future consumer has no such grid to refresh. */
   onSuccess?: () => void;
+  /** Supplies the trigger that opens this dialog, given an `open`
+   *  callback — the same externally-supplied-trigger convention
+   *  AddTaskDialog/NewContactDialog already use. CatalogItemCard passes
+   *  its combined actions menu's "Edit" item here instead of this
+   *  component rendering its own visible pencil button, so Edit and
+   *  Activate/Deactivate can live inside one shared menu (see
+   *  CatalogItemActionsMenu). */
+  renderTrigger: (open: () => void) => ReactNode;
 };
 
 /**
- * Self-contained trigger + dialog, the same shape as NewCatalogItemDialog
- * and AddTaskDialog — owns its own isOpen, so each open starts from the
- * item's current values rather than carrying over anything from a
- * previous edit. Only ever rendered by CatalogItemCard for an ADMIN (see
- * app/(app)/catalog/page.tsx's canManage), matching
- * CatalogItemStatusMenu's own gating — a UX convenience, not the
- * security boundary: updateCatalogItemAction re-checks the role
- * independently, and RLS ("admins can update their customer's catalog
- * items") is what actually holds regardless.
+ * Dialog-only now — no longer renders its own trigger button.
+ * CatalogItemCard supplies the trigger via `renderTrigger` (see
+ * CatalogItemActionsMenu's "Edit" menu item), so this component owns
+ * only isOpen/the form itself; each open still starts from the item's
+ * current values rather than carrying over anything from a previous
+ * edit. Only ever reachable through a menu CatalogItemCard renders for
+ * an ADMIN (see app/(app)/catalog/page.tsx's canManage) — a UX
+ * convenience, not the security boundary: updateCatalogItemAction
+ * re-checks the role independently, and RLS ("admins can update their
+ * customer's catalog items") is what actually holds regardless.
  *
  * Reuses CatalogItemFormFields — the exact same fields/markup
  * NewCatalogItemDialog renders — pre-filled via defaultValues and
  * posting to updateCatalogItemAction instead of createCatalogItemAction.
  * Not a second catalog item form.
  */
-export function EditCatalogItemDialog({ item, onSuccess }: EditCatalogItemDialogProps) {
+export function EditCatalogItemDialog({ item, onSuccess, renderTrigger }: EditCatalogItemDialogProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [state, formAction] = useActionState(updateCatalogItemAction, initialCatalogItemFormState);
   const fieldErrors = state.fieldErrors ?? {};
@@ -65,14 +75,7 @@ export function EditCatalogItemDialog({ item, onSuccess }: EditCatalogItemDialog
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => setIsOpen(true)}
-        aria-label={`Edit ${item.name}`}
-        className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-neutral-500 transition-colors hover:bg-neutral-100 hover:text-neutral-900"
-      >
-        <PencilIcon className="h-3.5 w-3.5" />
-      </button>
+      {renderTrigger(() => setIsOpen(true))}
 
       {isOpen ? (
         <Modal

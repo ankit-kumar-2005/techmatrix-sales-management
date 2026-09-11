@@ -14,7 +14,7 @@ import { LeadFormFields, LeadFormSubmitButton } from "./lead-form-fields";
 // Lead field's only option, without needing a separate "locked" mode in
 // TaskFormFields.
 import { AddTaskDialog } from "@/features/tasks/components/add-task-dialog";
-import { PlusIcon } from "@/features/sales-management/components/icons";
+import { LeadCaptureIcon, PlusIcon } from "@/features/sales-management/components/icons";
 import type { CustomerLeadStage, Lead, TeamDirectoryEntry } from "@/types/lead";
 import type { CustomerRole } from "@/types/customer";
 
@@ -74,7 +74,16 @@ export function EditLeadDialog({
   }, [state, onClose]);
 
   return (
-    <Modal title="Edit Lead" onClose={onClose}>
+    <Modal
+      title="Edit Lead"
+      subtitle="Update this lead's details."
+      icon={
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-sky-50 to-blue-50 text-sky-600 ring-1 ring-sky-100">
+          <LeadCaptureIcon className="h-5 w-5" />
+        </span>
+      }
+      onClose={onClose}
+    >
       <div className="flex flex-col gap-4">
         {/* Deliberately OUTSIDE the <form> below: AddTaskDialog renders
             its own <form> when open (via the shared, non-portaling Modal
@@ -125,7 +134,7 @@ export function EditLeadDialog({
 
           {state.formError ? <MessageBanner tone="error">{state.formError}</MessageBanner> : null}
 
-          <div className="mt-2 flex justify-end gap-3">
+          <div className="sticky bottom-0 -mx-6 -mb-5 flex justify-end gap-3 border-t border-neutral-100 bg-white px-6 py-4">
             <button
               type="button"
               onClick={onClose}

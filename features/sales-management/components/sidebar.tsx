@@ -40,7 +40,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: "Lead Capture", icon: LeadCaptureIcon },
   { label: "Automations", icon: AutomationsIcon },
   { label: "Catalog", icon: CatalogIcon, href: "/catalog" },
-  { label: "Contacts", icon: ContactsIcon },
+  { label: "Contacts", icon: ContactsIcon, href: "/contacts" },
   { label: "Tasks", icon: TasksIcon, href: "/tasks" },
   { label: "Team", icon: TeamIcon },
   { label: "Forecast", icon: ForecastIcon },

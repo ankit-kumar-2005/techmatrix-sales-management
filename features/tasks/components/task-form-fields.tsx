@@ -5,6 +5,7 @@ import { useFormStatus } from "react-dom";
 import { FormField } from "@/components/shared/form-field";
 import { SelectField } from "@/components/shared/select-field";
 import { FormSection } from "@/components/shared/form-section";
+import { LeadSearchSelect } from "@/features/leads/components/lead-search-select";
 // Reused directly from features/leads — the spec is explicit that Tasks
 // must reuse the existing team-directory/name-resolution logic rather
 // than build a second lookup, and this is that logic. Not promoted to a
@@ -14,7 +15,7 @@ import { FormSection } from "@/components/shared/form-section";
 // is the smaller, lower-risk move for a first version.
 import { getOwnerDisplayLabels } from "@/features/leads/lib/owner-display";
 import { TasksIcon, ClockIcon, UserPlusIcon } from "@/features/sales-management/components/icons";
-import { TASK_PRIORITIES, TASK_TYPES } from "@/types/task";
+import { TASK_PRIORITIES, TASK_STATUSES, TASK_TYPES } from "@/types/task";
 import type { Lead, TeamDirectoryEntry } from "@/types/lead";
 
 /** Shared submit button — same look as LeadFormSubmitButton/AddItemButton
@@ -54,8 +55,30 @@ type TaskFormFieldsProps = {
   fieldErrors: Record<string, string>;
   /** Set when opened from a Lead's own "Add Task" action — preselects
    *  the Lead field (still changeable) rather than requiring it be
-   *  picked again. */
+   *  picked again. Ignored (and does nothing) when defaultValues is also
+   *  set — edit mode shows Lead as read-only instead, see below. */
   defaultLeadId?: string;
+  /** Present only when editing an existing task — pre-fills every field
+   *  and adds a Status field (a new task always starts at the database's
+   *  own DEFAULT 'Pending', so create mode has no Status control; editing
+   *  is the one place besides the row checkbox a task's status can
+   *  change). Lead is deliberately excluded from what gets edited here:
+   *  lead_id is immutable after creation (protect_task_identity_columns,
+   *  see the tasks migration), so in edit mode the Lead field renders as
+   *  read-only display text instead of the searchable picker below, and
+   *  defaultValues carries no lead_id of its own to submit — see
+   *  EditTaskDialog, which resolves the linked lead's label itself and
+   *  passes it here as `lockedLeadLabel`. */
+  defaultValues?: {
+    subject: string;
+    description: string | null;
+    priority: string;
+    due_date: string;
+    assigned_to: string;
+    type: string;
+    status: string;
+  };
+  lockedLeadLabel?: string;
 };
 
 export function TaskFormFields({
@@ -64,6 +87,8 @@ export function TaskFormFields({
   currentUserCustomerUserId,
   fieldErrors,
   defaultLeadId,
+  defaultValues,
+  lockedLeadLabel,
 }: TaskFormFieldsProps) {
   // Same disambiguation logic the Owner column/picker use for Leads —
   // computed here from the raw assignableUsers array for the same
@@ -80,6 +105,7 @@ export function TaskFormFields({
           required
           variant="filled"
           placeholder="e.g. Call customer regarding proposal"
+          defaultValue={defaultValues?.subject}
           error={fieldErrors.subject}
         />
 
@@ -92,6 +118,7 @@ export function TaskFormFields({
             name="description"
             rows={3}
             placeholder="Optional details a teammate would find useful"
+            defaultValue={defaultValues?.description ?? undefined}
             aria-invalid={Boolean(fieldErrors.description)}
             className={`w-full resize-none rounded-lg border bg-neutral-100 px-3.5 py-2.5 text-sm text-neutral-900 outline-none transition-all duration-200 focus:border-sky-500 focus:bg-white focus:ring-2 focus:ring-sky-500/30 ${
               fieldErrors.description ? "border-red-400" : "border-transparent"
@@ -104,31 +131,65 @@ export function TaskFormFields({
           ) : null}
         </div>
 
-        <SelectField
-          label="Lead"
-          id="task-lead"
-          name="lead_id"
-          required
-          defaultValue={defaultLeadId ?? ""}
-          error={fieldErrors.lead_id}
-        >
-          <option value="" disabled>
-            Select a lead
-          </option>
-          {leads.map((lead) => (
-            <option key={lead.id} value={lead.id}>
-              {lead.company ? `${lead.company} — ${lead.contact_name}` : lead.contact_name}
-            </option>
-          ))}
-        </SelectField>
+        {defaultValues ? (
+          // Read-only in edit mode — lead_id is immutable after creation
+          // (see this component's own defaultValues comment), so there's
+          // no lead_id form field submitted here at all in edit mode.
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-medium text-neutral-700">Lead</label>
+            <input
+              type="text"
+              value={lockedLeadLabel ?? ""}
+              disabled
+              readOnly
+              aria-readonly="true"
+              className="w-full cursor-not-allowed rounded-lg border border-transparent bg-neutral-100 px-3.5 py-2.5 text-sm text-neutral-500 outline-none"
+            />
+            <p className="text-xs text-neutral-400">A task&rsquo;s linked lead cannot be changed after creation.</p>
+          </div>
+        ) : (
+          <LeadSearchSelect
+            label="Lead"
+            id="task-lead"
+            name="lead_id"
+            required
+            leads={leads}
+            defaultLeadId={defaultLeadId}
+            error={fieldErrors.lead_id}
+          />
+        )}
 
-        <SelectField label="Type" id="task-type" name="type" required defaultValue="Other" error={fieldErrors.type}>
+        <SelectField
+          label="Type"
+          id="task-type"
+          name="type"
+          required
+          defaultValue={defaultValues?.type ?? "Other"}
+          error={fieldErrors.type}
+        >
           {TASK_TYPES.map((type) => (
             <option key={type} value={type}>
               {type}
             </option>
           ))}
         </SelectField>
+
+        {defaultValues ? (
+          <SelectField
+            label="Status"
+            id="task-status"
+            name="status"
+            required
+            defaultValue={defaultValues.status}
+            error={fieldErrors.status}
+          >
+            {TASK_STATUSES.map((status) => (
+              <option key={status} value={status}>
+                {status}
+              </option>
+            ))}
+          </SelectField>
+        ) : null}
       </FormSection>
 
       <FormSection icon={<ClockIcon className="h-3.5 w-3.5" />} title="Scheduling">
@@ -139,6 +200,7 @@ export function TaskFormFields({
             type="date"
             required
             variant="filled"
+            defaultValue={defaultValues?.due_date}
             error={fieldErrors.due_date}
           />
 
@@ -147,7 +209,7 @@ export function TaskFormFields({
             id="task-priority"
             name="priority"
             required
-            defaultValue="Medium"
+            defaultValue={defaultValues?.priority ?? "Medium"}
             error={fieldErrors.priority}
           >
             {TASK_PRIORITIES.map((priority) => (
@@ -165,7 +227,7 @@ export function TaskFormFields({
           id="task-assigned-to"
           name="assigned_to"
           required
-          defaultValue={currentUserCustomerUserId}
+          defaultValue={defaultValues?.assigned_to ?? currentUserCustomerUserId}
           error={fieldErrors.assigned_to}
           helperText="Only teammates within your reporting hierarchy are listed."
         >

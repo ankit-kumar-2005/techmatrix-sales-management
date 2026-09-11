@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { TASK_PRIORITIES, TASK_TYPES, type TaskPriority, type TaskType } from "@/types/task";
+import { TASK_PRIORITIES, TASK_STATUSES, TASK_TYPES, type TaskPriority, type TaskStatus, type TaskType } from "@/types/task";
 
 const SUBJECT_MAX_LENGTH = 200;
 
@@ -55,3 +55,39 @@ export const createTaskSchema = z.object({
 });
 
 export type CreateTaskInput = z.infer<typeof createTaskSchema>;
+
+// Same .refine() pattern as taskPriority/taskTypeSchema above, for the
+// same reason — TASK_STATUSES is the one and only vocabulary (see
+// types/task.ts: "There is NO: Active/Inactive/record_status").
+const taskStatusSchema = z
+  .string()
+  .refine((value): value is TaskStatus => (TASK_STATUSES as readonly string[]).includes(value), {
+    message: "Select a status.",
+  });
+
+/**
+ * lead_id is deliberately NOT part of this schema — it's immutable after
+ * creation (protect_task_identity_columns, see the tasks migration), so
+ * the edit form never submits it; EditTaskDialog shows it as read-only
+ * display text instead of the searchable picker createTaskSchema's own
+ * lead_id field feeds — same treatment updateContactSchema already gives
+ * its own immutable lead_id.
+ *
+ * status IS here (unlike createTaskSchema, where a new task always
+ * starts at the database's own DEFAULT 'Pending') — editing is the one
+ * place besides completeTaskAction a task's status can change, per the
+ * spec's own "Pre-populate: ... Status" requirement. Still only ever
+ * "Pending" or "Completed" — see taskStatusSchema above.
+ */
+export const updateTaskSchema = z.object({
+  id: z.string().trim().min(1).uuid(),
+  subject: createTaskSchema.shape.subject,
+  description: createTaskSchema.shape.description,
+  priority: taskPrioritySchema,
+  due_date: createTaskSchema.shape.due_date,
+  assigned_to: createTaskSchema.shape.assigned_to,
+  type: taskTypeSchema,
+  status: taskStatusSchema,
+});
+
+export type UpdateTaskInput = z.infer<typeof updateTaskSchema>;

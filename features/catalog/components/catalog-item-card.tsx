@@ -1,7 +1,6 @@
 import { currencyFormatter } from "@/utils/format";
-import { CatalogItemStatusMenu } from "./catalog-item-status-menu";
+import { CatalogItemActionsMenu } from "./catalog-item-actions-menu";
 import { EditCatalogItemDialog } from "./edit-catalog-item-dialog";
-import { TagIcon } from "@/features/sales-management/components/icons";
 import type { CatalogItem } from "@/types/catalog";
 
 /** Matches the pricing_unit CHECK constraint's exact stored values —
@@ -34,56 +33,49 @@ type CatalogItemCardProps = {
  * dangerouslySetInnerHTML), so React's default escaping is what keeps
  * this XSS-safe.
  *
- * INACTIVE STYLING: a purely visual state mapping — what "Active"/
- * "Inactive" means, and how it's toggled, is untouched. An inactive
- * item mutes every color accent (icon chip, category label, price
- * strip) to gray and slightly reduces the whole card's opacity, so it
- * visibly recedes next to Active cards in the same grid without ever
- * making its own text illegible.
+ * STATUS STYLING: this is the second iteration of this card's status
+ * treatment. The first version colored the whole card by status
+ * (too loud); the second made status ONLY a small badge (client
+ * feedback: too subtle to scan at a glance across a grid). This
+ * version splits the difference deliberately: the card SURFACE (a flat
+ * pale teal tint for Active, plain white for Inactive) plus a thin left
+ * accent bar carry the at-a-glance signal, while name/description/price
+ * stay full-strength `neutral-900`/`neutral-600` on every card — no
+ * opacity reduction, no strikethrough, nothing that reads as "disabled."
+ * The badge is still present and still the explicit, readable label;
+ * it's just no longer the ONLY thing that changes.
  */
 export function CatalogItemCard({ item, canManage, onItemChanged }: CatalogItemCardProps) {
   const isActive = item.status === "Active";
 
   return (
     <div
-      className={`flex h-full flex-col overflow-hidden rounded-2xl shadow-sm ring-1 ring-black/5 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg ${
+      className={`flex h-full flex-col overflow-hidden rounded-2xl border-l-[3px] shadow-sm ring-1 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md ${
         isActive
-          ? "bg-gradient-to-br from-white to-teal-50/50 hover:ring-teal-900/10"
-          : "bg-gradient-to-br from-white to-neutral-50 opacity-90 hover:ring-neutral-900/10"
+          ? "border-l-teal-500 bg-teal-50/60 ring-teal-100 hover:ring-teal-300"
+          : "border-l-neutral-300 bg-white ring-neutral-200 hover:ring-neutral-300"
       }`}
     >
       <div className="flex flex-1 flex-col p-6">
         <div className="flex items-start justify-between gap-2">
-          <div className="flex min-w-0 items-center gap-2.5">
-            <span
-              className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ring-1 ${
-                isActive ? "bg-teal-50 text-teal-700 ring-teal-100" : "bg-neutral-100 text-neutral-400 ring-neutral-200"
-              }`}
-            >
-              <TagIcon className="h-4 w-4" />
-            </span>
-            <p
-              className={`truncate text-[11px] font-semibold tracking-wider uppercase ${
-                isActive ? "text-teal-700" : "text-neutral-400"
-              }`}
-            >
-              {item.category}
-            </p>
-          </div>
+          <p className="min-w-0 truncate text-[11px] font-semibold tracking-wider text-neutral-500 uppercase">{item.category}</p>
           <div className="flex shrink-0 items-center gap-1.5">
             <span
-              className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold transition-colors duration-150 ${
-                isActive ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100" : "bg-neutral-100 text-neutral-500 ring-1 ring-neutral-200"
+              className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 ring-inset ${
+                isActive ? "bg-teal-100 text-teal-800 ring-teal-200" : "bg-neutral-100 text-neutral-600 ring-neutral-200"
               }`}
             >
-              <span className={`h-1.5 w-1.5 rounded-full ${isActive ? "bg-emerald-500" : "bg-neutral-400"}`} aria-hidden="true" />
+              <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${isActive ? "bg-teal-500" : "bg-neutral-400"}`} aria-hidden="true" />
               {item.status}
             </span>
             {canManage ? (
-              <>
-                <EditCatalogItemDialog item={item} onSuccess={onItemChanged} />
-                <CatalogItemStatusMenu item={item} onChanged={onItemChanged} />
-              </>
+              <EditCatalogItemDialog
+                item={item}
+                onSuccess={onItemChanged}
+                renderTrigger={(open) => (
+                  <CatalogItemActionsMenu item={item} onEdit={open} onChanged={onItemChanged} />
+                )}
+              />
             ) : null}
           </div>
         </div>
@@ -94,7 +86,7 @@ export function CatalogItemCard({ item, canManage, onItemChanged }: CatalogItemC
 
       <div
         className={`mt-auto flex items-end justify-between gap-3 border-t px-6 py-4 ${
-          isActive ? "border-teal-100 bg-teal-50/60" : "border-neutral-200 bg-neutral-50"
+          isActive ? "border-teal-100 bg-teal-50/50" : "border-neutral-100 bg-neutral-50/60"
         }`}
       >
         <p className="text-2xl font-bold tracking-tight text-neutral-900">{currencyFormatter.format(item.price)}</p>

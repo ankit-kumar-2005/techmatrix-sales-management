@@ -33,9 +33,24 @@ type CatalogItemsGridProps = {
    *  problem: the new item itself is still fully visible either way. */
   categories: string[];
   canManage: boolean;
+  /** Bumped by the page-level "+ Add item" dialog's onSuccess (owned by
+   *  the shared client ancestor, CatalogPageClient, since that button
+   *  now lives in the page HEADER — top-right, next to the heading —
+   *  not inside this component's own toolbar) — forces a re-fetch of
+   *  whatever this grid is currently showing, so a newly created item
+   *  shows up without the user navigating away and back. Unlike the
+   *  internal refreshToken below, this one never resets search/category/
+   *  page — see CatalogPageClient's own comment on that tradeoff. */
+  externalRefreshToken: number;
 };
 
-export function CatalogItemsGrid({ initialItems, initialTotalCount, categories, canManage }: CatalogItemsGridProps) {
+export function CatalogItemsGrid({
+  initialItems,
+  initialTotalCount,
+  categories,
+  canManage,
+  externalRefreshToken,
+}: CatalogItemsGridProps) {
   const [items, setItems] = useState(initialItems);
   const [totalCount, setTotalCount] = useState(initialTotalCount);
   const [isLoading, setIsLoading] = useState(false);
@@ -90,7 +105,7 @@ export function CatalogItemsGrid({ initialItems, initialTotalCount, categories, 
     return () => {
       cancelled = true;
     };
-  }, [committedSearch, category, page, pageSize, refreshToken]);
+  }, [committedSearch, category, page, pageSize, refreshToken, externalRefreshToken]);
 
   const pageCount = Math.max(Math.ceil(totalCount / pageSize), 1);
   const currentPage = Math.min(page, pageCount - 1);
@@ -171,10 +186,6 @@ export function CatalogItemsGrid({ initialItems, initialTotalCount, categories, 
             >
               Reset
             </button>
-
-            {canManage ? (
-              <NewCatalogItemDialog onSuccess={handleItemCreated} />
-            ) : null}
           </div>
         </div>
 

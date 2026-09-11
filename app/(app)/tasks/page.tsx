@@ -1,12 +1,11 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { getCurrentMembership } from "@/features/customers/lib/get-current-membership";
+import { getAuthenticatedUser, getCurrentMembership } from "@/features/customers/lib/get-current-membership";
 import { getTasksBucketPage, type TaskDueBucket, type TasksBucketPage } from "@/features/tasks/lib/get-tasks";
 import { getLeadsForCustomer } from "@/features/leads/lib/get-leads";
 import { getVisibleTeamDirectory } from "@/features/leads/lib/get-team-directory";
-import { TaskList } from "@/features/tasks/components/task-list";
-import { TasksIcon } from "@/features/sales-management/components/icons";
-import { TASK_TYPES, TASK_STATUSES } from "@/types/task";
+import { TasksPageClient } from "@/features/tasks/components/tasks-page-client";
+import { TASK_TYPES, TASK_STATUSES, TASK_PRIORITIES } from "@/types/task";
 
 const INITIAL_PAGE_SIZE = 10;
 const ALL_BUCKETS: TaskDueBucket[] = ["overdue", "today", "upcoming"];
@@ -28,7 +27,15 @@ function parseEnumParam<T extends string>(value: string | undefined, allowed: re
 }
 
 type TasksPageProps = {
-  searchParams: Promise<{ q?: string; owner?: string; type?: string; status?: string; due?: string }>;
+  searchParams: Promise<{
+    q?: string;
+    owner?: string;
+    type?: string;
+    priority?: string;
+    status?: string;
+    due?: string;
+    lead?: string;
+  }>;
 };
 
 /**
@@ -64,7 +71,7 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
   const supabase = await createClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await getAuthenticatedUser(supabase);
 
   if (!user) {
     redirect("/login");
@@ -79,11 +86,18 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
   const initialSearch = params.q ?? "";
   const initialOwnerId = params.owner ?? "";
   const initialType = parseEnumParam(params.type, TASK_TYPES);
+  const initialPriority = parseEnumParam(params.priority, TASK_PRIORITIES);
   const initialStatus = parseEnumParam(params.status, TASK_STATUSES);
   const initialDueBucket = parseEnumParam(params.due, DUE_BUCKET_VALUES);
-  const hasInitialFilters = Boolean(
-    initialSearch || initialOwnerId || initialType || initialStatus || initialDueBucket,
-  );
+  // Not validated against the fetched `leads` array here (that would mean
+  // awaiting getLeadsForCustomer before this query could even start) — an
+  // invalid or cross-tenant id simply matches zero rows (already scoped
+  // to customer_id, and RLS's own "hierarchy-aware task visibility"
+  // policy is the real boundary regardless), so there's no security
+  // reason to pre-check it and a real performance reason not to
+  // serialize these two fetches — same reasoning ContactsPage's own
+  // identical initialLeadId already uses.
+  const initialLeadId = params.lead ?? "";
 
   const todayStr = toDateOnlyString(new Date());
   const baseParams = {
@@ -91,7 +105,9 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
     search: initialSearch,
     ownerId: initialOwnerId,
     type: initialType,
+    priority: initialPriority,
     status: initialStatus,
+    leadId: initialLeadId,
     page: 0,
     pageSize: INITIAL_PAGE_SIZE,
   };
@@ -111,52 +127,20 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
     initialBuckets[bucket] = bucketResults[index];
   });
 
-  // With an active filter, a zero total means "nothing matches the
-  // filter" (TaskList's own toolbar + reset button is the right UI for
-  // that), not "this customer has no tasks at all" — only the unfiltered
-  // case falls through to the page-level empty state below.
-  const totalAcrossBuckets = bucketResults.reduce((sum, result) => sum + result.totalCount, 0);
-  const hasAnyTasksAtAll = totalAcrossBuckets > 0 || hasInitialFilters;
-
   return (
-    <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight text-neutral-900 sm:text-3xl">Tasks &amp; reminders</h1>
-        <span
-          aria-hidden="true"
-          className="mt-2 block h-1 w-10 rounded-full bg-gradient-to-r from-blue-600 to-violet-600"
-        />
-        <p className="mt-1.5 text-sm text-neutral-500">
-          Everything due across your leads, grouped by when it&rsquo;s due.
-        </p>
-      </div>
-
-      {!hasAnyTasksAtAll ? (
-        <div className="flex flex-col items-center gap-3 rounded-2xl bg-white py-14 text-center shadow-sm ring-1 ring-black/5">
-          <span className="flex h-12 w-12 items-center justify-center rounded-full bg-sky-50 text-sky-600">
-            <TasksIcon className="h-6 w-6" />
-          </span>
-          <div>
-            <p className="text-sm font-semibold text-neutral-700">No tasks yet</p>
-            <p className="mt-1 max-w-xs text-sm text-neutral-500">
-              Create a task to stay on top of your lead follow-ups.
-            </p>
-          </div>
-        </div>
-      ) : (
-        <TaskList
-          initialBuckets={initialBuckets}
-          initialTodayStr={todayStr}
-          initialSearch={initialSearch}
-          initialOwnerId={initialOwnerId}
-          initialType={initialType}
-          initialStatus={initialStatus}
-          initialDueBucket={initialDueBucket}
-          leads={leads}
-          assignableUsers={assignableUsers}
-          currentUserCustomerUserId={membership.membership.id}
-        />
-      )}
-    </div>
+    <TasksPageClient
+      initialBuckets={initialBuckets}
+      initialTodayStr={todayStr}
+      initialSearch={initialSearch}
+      initialOwnerId={initialOwnerId}
+      initialType={initialType}
+      initialPriority={initialPriority}
+      initialStatus={initialStatus}
+      initialDueBucket={initialDueBucket}
+      initialLeadId={initialLeadId}
+      leads={leads}
+      assignableUsers={assignableUsers}
+      currentUserCustomerUserId={membership.membership.id}
+    />
   );
 }

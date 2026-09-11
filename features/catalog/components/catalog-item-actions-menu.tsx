@@ -1,12 +1,17 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { MoreVerticalIcon, PauseCircleIcon, RefreshIcon } from "@/features/sales-management/components/icons";
+import { MoreVerticalIcon, PauseCircleIcon, PencilIcon, RefreshIcon } from "@/features/sales-management/components/icons";
 import { setCatalogItemStatusAction } from "../actions";
 import type { CatalogItem } from "@/types/catalog";
 
-type CatalogItemStatusMenuProps = {
+type CatalogItemActionsMenuProps = {
   item: CatalogItem;
+  /** Opens EditCatalogItemDialog — passed straight through from
+   *  CatalogItemCard, which supplies this menu as that dialog's
+   *  renderTrigger. Selecting "Edit" closes this menu and calls it;
+   *  it does not itself know or care what opens. */
+  onEdit: () => void;
   /** Called after a successful status change so the caller (the
    *  paginated grid) can refresh whatever it's currently showing —
    *  same current search/filter/page, not reset to page 1. Optional so
@@ -16,30 +21,33 @@ type CatalogItemStatusMenuProps = {
 };
 
 /**
+ * Formerly CatalogItemStatusMenu (Activate/Deactivate only) — renamed
+ * and expanded into the single "⋮" action menu for a catalog item, now
+ * that the card no longer has its own separate visible pencil/Edit
+ * button. Edit is just another menu item here; it doesn't run any edit
+ * logic itself, only calls the onEdit callback EditCatalogItemDialog
+ * supplies via renderTrigger.
+ *
  * Only ever rendered by CatalogItemCard for an ADMIN — see
  * app/(app)/catalog/page.tsx's canManage check. UX convenience only:
- * setCatalogItemStatusAction re-checks the role independently, and RLS
- * ("admins can update their customer's catalog items") is what actually
- * holds if either were ever bypassed.
+ * setCatalogItemStatusAction/updateCatalogItemAction both re-check the
+ * role independently, and RLS ("admins can update their customer's
+ * catalog items") is what actually holds if either were ever bypassed.
  *
- * No confirmation step and no success message at all — selecting the
- * menu item calls setCatalogItemStatusAction immediately, and the
- * card's own status pill/styling (driven by `item`, refreshed via
- * onChanged) is the only feedback for a successful change. A failure is
- * still surfaced, but as a plain inline line inside this already-open
- * menu — never a separate floating/fixed element — so there is nothing
- * here that can require a click to dismiss, and nothing positioned in a
- * way an ancestor's hover transform could ever trap (the bug that used
- * to make a previous version of this component's toast render "inside"
- * the card — see Modal's own comment for the full explanation of that
- * CSS containing-block issue).
+ * Activate/Deactivate keeps its original behavior exactly: no
+ * confirmation step, no success message — selecting it calls
+ * setCatalogItemStatusAction immediately, and the card's own status
+ * pill/styling (driven by `item`, refreshed via onChanged) is the only
+ * feedback for a successful change. A failure is still surfaced, but as
+ * a plain inline line inside this already-open menu — never a separate
+ * floating/fixed element.
  *
- * No dropdown/menu primitive existed anywhere in this project yet, so
- * this is a small, local one (click-outside via a full-screen invisible
- * button) — not promoted to components/shared/ since this is its only
- * consumer so far, matching this project's own "start local" convention.
+ * Same local click-outside/keyboard-accessible dropdown implementation
+ * as before (no shared dropdown primitive exists yet in this project) —
+ * reused here rather than rebuilt, per this project's "start local,
+ * don't invent a second menu component" convention.
  */
-export function CatalogItemStatusMenu({ item, onChanged }: CatalogItemStatusMenuProps) {
+export function CatalogItemActionsMenu({ item, onEdit, onChanged }: CatalogItemActionsMenuProps) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -49,11 +57,16 @@ export function CatalogItemStatusMenu({ item, onChanged }: CatalogItemStatusMenu
   // (a prop) rather than stored separately, so there's nothing that
   // could drift out of sync with it.
   const nextStatus = item.status === "Active" ? "Inactive" : "Active";
-  const actionLabel = nextStatus === "Inactive" ? "Deactivate" : "Activate";
+  const actionLabel = nextStatus === "Inactive" ? "Make inactive" : "Make active";
   const pendingLabel = nextStatus === "Inactive" ? "Deactivating..." : "Activating...";
   const ActionIcon = nextStatus === "Inactive" ? PauseCircleIcon : RefreshIcon;
 
-  function handleSelect() {
+  function handleEdit() {
+    setIsMenuOpen(false);
+    onEdit();
+  }
+
+  function handleToggleStatus() {
     setError(null);
     startTransition(async () => {
       const result = await setCatalogItemStatusAction(item.id, nextStatus);
@@ -103,7 +116,16 @@ export function CatalogItemStatusMenu({ item, onChanged }: CatalogItemStatusMenu
             <button
               type="button"
               role="menuitem"
-              onClick={handleSelect}
+              onClick={handleEdit}
+              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-medium text-neutral-700 transition-colors hover:bg-neutral-50"
+            >
+              <PencilIcon className="h-4 w-4 text-neutral-400" />
+              Edit
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={handleToggleStatus}
               disabled={isPending}
               className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-medium text-neutral-700 transition-colors hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-60"
             >

@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { getCurrentMembership } from "@/features/customers/lib/get-current-membership";
+import { getAuthenticatedUser, getCurrentMembership } from "@/features/customers/lib/get-current-membership";
 import { getLeadsForCustomer } from "@/features/leads/lib/get-leads";
 import { getLeadStagesForCustomer } from "@/features/leads/lib/get-lead-stages";
 import { getVisibleTeamDirectory } from "@/features/leads/lib/get-team-directory";
@@ -31,7 +31,7 @@ export default async function SalesManagementPage() {
   const supabase = await createClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await getAuthenticatedUser(supabase);
 
   if (!user) {
     redirect("/login");

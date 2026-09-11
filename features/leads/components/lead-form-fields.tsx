@@ -4,6 +4,8 @@ import { useMemo, useState, type ChangeEvent } from "react";
 import { useFormStatus } from "react-dom";
 import { FormField } from "@/components/shared/form-field";
 import { SelectField } from "@/components/shared/select-field";
+import { FormSection } from "@/components/shared/form-section";
+import { LeadCaptureIcon, TrendingUpIcon, UserPlusIcon } from "@/features/sales-management/components/icons";
 import { LEAD_SOURCES } from "../schemas";
 import { getOwnerDisplayLabels } from "../lib/owner-display";
 import type { CustomerLeadStage, TeamDirectoryEntry } from "@/types/lead";
@@ -18,9 +20,18 @@ import type { CustomerRole } from "@/types/customer";
  * be CreateLeadDialog's own inline JSX. SelectField itself now lives in
  * components/shared/ (promoted from a local definition here once the
  * Catalog feature needed the identical pattern).
+ *
+ * Grouped into FormSections (Lead Details / Deal Info / Assignment) —
+ * a purely visual reorganization matching the grouping ContactFormFields/
+ * TaskFormFields already use; every field keeps its exact name/type/
+ * required/validation behavior, only its position in the layout changed.
  */
 
-/** Shared submit button — same look everywhere, label configurable per dialog. */
+/** Shared submit button — same gradient treatment as ContactFormSubmitButton/
+ *  TaskFormSubmitButton elsewhere in this app (previously a flat
+ *  `bg-sky-600`, restyled here purely for visual consistency with the
+ *  other three creation forms — same type="submit"/disabled/pending
+ *  behavior). */
 export function LeadFormSubmitButton({ idleLabel, pendingLabel }: { idleLabel: string; pendingLabel: string }) {
   const { pending } = useFormStatus();
 
@@ -28,7 +39,7 @@ export function LeadFormSubmitButton({ idleLabel, pendingLabel }: { idleLabel: s
     <button
       type="submit"
       disabled={pending}
-      className="min-h-11 rounded-full bg-sky-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
+      className="min-h-11 rounded-full bg-gradient-to-r from-blue-600 to-violet-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm shadow-blue-600/20 transition-all duration-200 hover:from-blue-700 hover:to-violet-700 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:shadow-sm"
     >
       {pending ? pendingLabel : idleLabel}
     </button>
@@ -113,98 +124,129 @@ export function LeadFormFields({ stages, owners, role, currentUserEmail, fieldEr
 
   return (
     <>
-      <FormField
-        label=" Name"
-        name="contact_name"
-        required
-        variant="filled"
-        defaultValue={defaultValues?.contact_name}
-        error={fieldErrors.contact_name}
-      />
-
-      <FormField
-        label="Phone Number"
-        name="phone"
-        type="tel"
-        required
-        variant="filled"
-        value={contactNumber}
-        onChange={handleContactNumberChange}
-        error={fieldErrors.phone}
-      />
-
-      <label className="flex items-center gap-2 text-sm text-neutral-600">
-        <input
-          type="checkbox"
-          name="whatsapp_same"
-          checked={whatsappSame}
-          onChange={handleWhatsappSameChange}
-          className="h-4 w-4 rounded border-neutral-300 text-sky-600 focus:ring-2 focus:ring-sky-500/30"
-        />
-        WhatsApp number is same as Phone number
-      </label>
-
-      <FormField
-        label="WhatsApp Number"
-        name="whatsapp_phone"
-        type="tel"
-        variant="filled"
-        readOnly={whatsappSame}
-        value={whatsappSame ? contactNumber : whatsappNumber}
-        onChange={(event) => setWhatsappNumber(event.target.value)}
-        error={fieldErrors.whatsapp_phone}
-        className={whatsappSame ? "cursor-not-allowed" : ""}
-      />
-
-      <FormField
-        label="Email"
-        name="email"
-        type="email"
-        variant="filled"
-        defaultValue={defaultValues?.email ?? undefined}
-        error={fieldErrors.email}
-      />
-
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <FormSection icon={<LeadCaptureIcon className="h-3.5 w-3.5" />} title="Lead details">
         <FormField
-          label="Company"
-          name="company"
-          variant="filled"
-          defaultValue={defaultValues?.company ?? undefined}
-          error={fieldErrors.company}
-        />
-        <FormField
-          label="Deal Value (₹)"
-          name="deal_value"
-          type="number"
-          min="0"
-          step="0.01"
-          variant="filled"
-          defaultValue={defaultValues?.deal_value ?? undefined}
-          error={fieldErrors.deal_value}
-        />
-      </div>
-
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <SelectField
-          label="Stage"
-          id="lead-stage"
-          name="stage_id"
+          label=" Name"
+          name="contact_name"
           required
-          defaultValue={defaultValues?.stage_id ?? ""}
-          error={fieldErrors.stage_id}
-        >
-          <option value="" disabled>
-            Select a stage
-          </option>
-          {selectableStages.map((stage) => (
-            <option key={stage.id} value={stage.id}>
-              {stage.stage}
-              {stage.status === "Inactive" ? " (Inactive)" : ""}
-            </option>
-          ))}
-        </SelectField>
+          variant="filled"
+          defaultValue={defaultValues?.contact_name}
+          error={fieldErrors.contact_name}
+        />
 
+        <FormField
+          label="Phone Number"
+          name="phone"
+          type="tel"
+          required
+          variant="filled"
+          value={contactNumber}
+          onChange={handleContactNumberChange}
+          error={fieldErrors.phone}
+        />
+
+        {/* Same underlying checkbox (name="whatsapp_same", same checked/
+            onChange) as before — only visually restyled as a sliding
+            pill toggle, the "peer" input driving a sibling track+thumb
+            via peer-checked, rather than a bare browser checkbox. */}
+        <label className="inline-flex w-fit cursor-pointer items-center gap-2.5 text-sm text-neutral-600">
+          <input
+            type="checkbox"
+            name="whatsapp_same"
+            checked={whatsappSame}
+            onChange={handleWhatsappSameChange}
+            className="peer sr-only"
+          />
+          <span className="relative inline-flex h-5 w-9 shrink-0 items-center rounded-full bg-neutral-300 transition-colors duration-200 peer-checked:bg-sky-600 peer-focus-visible:ring-2 peer-focus-visible:ring-sky-500/40 peer-focus-visible:ring-offset-2">
+            <span className="absolute left-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform duration-200 peer-checked:translate-x-4" />
+          </span>
+          WhatsApp number is same as Phone number
+        </label>
+
+        <FormField
+          label="WhatsApp Number"
+          name="whatsapp_phone"
+          type="tel"
+          variant="filled"
+          readOnly={whatsappSame}
+          value={whatsappSame ? contactNumber : whatsappNumber}
+          onChange={(event) => setWhatsappNumber(event.target.value)}
+          error={fieldErrors.whatsapp_phone}
+          className={whatsappSame ? "cursor-not-allowed" : ""}
+        />
+
+        <FormField
+          label="Email"
+          name="email"
+          type="email"
+          variant="filled"
+          defaultValue={defaultValues?.email ?? undefined}
+          error={fieldErrors.email}
+        />
+      </FormSection>
+
+      <FormSection icon={<TrendingUpIcon className="h-3.5 w-3.5" />} title="Deal info">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <FormField
+            label="Company"
+            name="company"
+            variant="filled"
+            defaultValue={defaultValues?.company ?? undefined}
+            error={fieldErrors.company}
+          />
+          <FormField
+            label="Deal Value (₹)"
+            name="deal_value"
+            type="number"
+            min="0"
+            step="0.01"
+            variant="filled"
+            defaultValue={defaultValues?.deal_value ?? undefined}
+            error={fieldErrors.deal_value}
+          />
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <SelectField
+            label="Stage"
+            id="lead-stage"
+            name="stage_id"
+            required
+            defaultValue={defaultValues?.stage_id ?? ""}
+            error={fieldErrors.stage_id}
+          >
+            <option value="" disabled>
+              Select a stage
+            </option>
+            {selectableStages.map((stage) => (
+              <option key={stage.id} value={stage.id}>
+                {stage.stage}
+                {stage.status === "Inactive" ? " (Inactive)" : ""}
+              </option>
+            ))}
+          </SelectField>
+
+          <SelectField label="Source" id="lead-source" name="source" defaultValue={defaultValues?.source ?? ""}>
+            <option value="">Select a source</option>
+            {sourceOptions.map((source) => (
+              <option key={source} value={source}>
+                {source}
+              </option>
+            ))}
+          </SelectField>
+        </div>
+
+        <FormField
+          label="Next Step"
+          name="next_step"
+          variant="filled"
+          placeholder="e.g. Send proposal"
+          defaultValue={defaultValues?.next_step ?? undefined}
+          error={fieldErrors.next_step}
+        />
+      </FormSection>
+
+      <FormSection icon={<UserPlusIcon className="h-3.5 w-3.5" />} title="Assignment">
         {role === "ADMIN" ? (
           <SelectField label="Owner" id="lead-owner" name="owner_id" defaultValue={defaultValues?.owner_id ?? ""}>
             <option value="">Unassigned</option>
@@ -227,25 +269,7 @@ export function LeadFormFields({ stages, owners, role, currentUserEmail, fieldEr
             />
           </div>
         )}
-      </div>
-
-      <SelectField label="Source" id="lead-source" name="source" defaultValue={defaultValues?.source ?? ""}>
-        <option value="">Select a source</option>
-        {sourceOptions.map((source) => (
-          <option key={source} value={source}>
-            {source}
-          </option>
-        ))}
-      </SelectField>
-
-      <FormField
-        label="Next Step"
-        name="next_step"
-        variant="filled"
-        placeholder="e.g. Send proposal"
-        defaultValue={defaultValues?.next_step ?? undefined}
-        error={fieldErrors.next_step}
-      />
+      </FormSection>
     </>
   );
 }

@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
 import { createClient } from "@/lib/supabase/server";
-import { getCurrentMembership } from "@/features/customers/lib/get-current-membership";
+import { getAuthenticatedUser, getCurrentMembership } from "@/features/customers/lib/get-current-membership";
 import { AppShell } from "@/features/sales-management/components/app-shell";
 
 /**
@@ -20,7 +20,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   const {
     data: { user },
     error,
-  } = await supabase.auth.getUser();
+  } = await getAuthenticatedUser(supabase);
 
   if (error || !user) {
     redirect("/login");

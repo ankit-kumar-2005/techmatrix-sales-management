@@ -1,10 +1,8 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { getCurrentMembership } from "@/features/customers/lib/get-current-membership";
+import { getAuthenticatedUser, getCurrentMembership } from "@/features/customers/lib/get-current-membership";
 import { getCatalogItemsPage, getDistinctCatalogCategories } from "@/features/catalog/lib/get-catalog-items";
-import { CatalogItemsGrid } from "@/features/catalog/components/catalog-items-grid";
-import { NewCatalogItemDialog } from "@/features/catalog/components/new-catalog-item-dialog";
-import { CatalogIcon } from "@/features/sales-management/components/icons";
+import { CatalogPageClient } from "@/features/catalog/components/catalog-page-client";
 
 const INITIAL_PAGE_SIZE = 6;
 
@@ -24,17 +22,18 @@ const INITIAL_PAGE_SIZE = 6;
  * this customer have any catalog items at all" below — a real 0 there
  * means an empty catalog, not just an empty filtered page.
  *
- * "+ New item" (both the header-style button and the ghost card) now
- * renders from inside CatalogItemsGrid instead of here — it needs to
- * share the grid's own refresh callback (reset filters + page 1 on
- * create) directly, and the two were siblings under this Server
- * Component before, which had no way to hand that callback across.
+ * The page header (title, description, "+ Add item") and the
+ * empty-state/grid branching all now live in CatalogPageClient — it
+ * needs one small piece of shared client state (a refreshToken the
+ * header button and CatalogItemsGrid both see) that a Server Component
+ * itself can't hold, the same reason TasksPageClient/ContactsPageClient
+ * exist for their own pages.
  */
 export default async function CatalogPage() {
   const supabase = await createClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await getAuthenticatedUser(supabase);
 
   if (!user) {
     redirect("/login");
@@ -60,49 +59,5 @@ export default async function CatalogPage() {
 
   const canManage = membership.role === "ADMIN";
 
-  return (
-    <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight text-neutral-900 sm:text-3xl">
-          Product &amp; service catalog
-        </h1>
-        <p className="mt-1.5 text-sm text-neutral-500">
-          What you sell, with pricing reps can attach to a proposal straight from a lead.
-        </p>
-      </div>
-
-      {initialPage.totalCount === 0 ? (
-        <div className="flex flex-col items-center gap-3 rounded-2xl bg-white py-14 text-center shadow-sm ring-1 ring-black/5">
-          <span className="flex h-12 w-12 items-center justify-center rounded-full bg-teal-50 text-teal-700">
-            <CatalogIcon className="h-6 w-6" />
-          </span>
-          {canManage ? (
-            <div className="flex flex-col items-center gap-3">
-              <div>
-                <p className="text-sm font-semibold text-neutral-700">No catalog items yet</p>
-                <p className="mt-1 max-w-xs text-sm text-neutral-500">
-                  Click &ldquo;New item&rdquo; to add the first thing you sell.
-                </p>
-              </div>
-              {/* This page's own Server Component re-renders once
-                  createCatalogItemAction's revalidatePath("/catalog")
-                  resolves, swapping straight to the CatalogItemsGrid
-                  branch below with the real data — no onSuccess/refresh
-                  wiring needed for this one-off "first item" case. */}
-              <NewCatalogItemDialog />
-            </div>
-          ) : (
-            <p className="text-sm font-semibold text-neutral-700">No catalog items are currently available.</p>
-          )}
-        </div>
-      ) : (
-        <CatalogItemsGrid
-          initialItems={initialPage.items}
-          initialTotalCount={initialPage.totalCount}
-          categories={categories}
-          canManage={canManage}
-        />
-      )}
-    </div>
-  );
+  return <CatalogPageClient initialPage={initialPage} categories={categories} canManage={canManage} />;
 }

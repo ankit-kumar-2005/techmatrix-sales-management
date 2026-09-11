@@ -40,7 +40,6 @@ import {
   SearchIcon,
   LeadCaptureIcon,
   ChevronDownIcon,
-  ChevronUpIcon,
   ClockIcon,
   LockIcon,
   PencilIcon,
@@ -709,7 +708,7 @@ function ListView({
             {table.getHeaderGroups().map((headerGroup) => (
               <tr
                 key={headerGroup.id}
-                className="border-b border-neutral-100 bg-neutral-50/60 text-xs font-semibold tracking-wider text-neutral-500 uppercase"
+                className="border-b border-neutral-100 bg-neutral-50/60 text-xs font-bold tracking-wider text-neutral-700 uppercase"
               >
                 {headerGroup.headers.map((header, index) => {
                   const sortDirection = header.column.getIsSorted();
@@ -728,22 +727,17 @@ function ListView({
                       className={`py-3 text-center ${index === 0 ? "px-6" : "px-3"}`}
                     >
                       {header.column.getCanSort() ? (
+                        // Sort icons removed per design — the header text
+                        // itself stays clickable (getToggleSortingHandler
+                        // is untouched) so sorting still works, aria-sort
+                        // above still announces the current direction for
+                        // assistive tech; only the visual chevrons are gone.
                         <button
                           type="button"
                           onClick={header.column.getToggleSortingHandler()}
-                          className="inline-flex items-center gap-1 uppercase tracking-wider transition-colors hover:text-neutral-700 focus-visible:ring-2 focus-visible:ring-sky-500/40 focus-visible:outline-none"
+                          className="uppercase tracking-wider transition-colors hover:text-neutral-900 focus-visible:ring-2 focus-visible:ring-sky-500/40 focus-visible:outline-none"
                         >
                           {flexRender(header.column.columnDef.header, header.getContext())}
-                          {sortDirection === "asc" ? (
-                            <ChevronUpIcon className="h-3 w-3" />
-                          ) : sortDirection === "desc" ? (
-                            <ChevronDownIcon className="h-3 w-3" />
-                          ) : (
-                            <span className="flex flex-col text-neutral-300">
-                              <ChevronUpIcon className="-mb-1 h-2.5 w-2.5" />
-                              <ChevronDownIcon className="h-2.5 w-2.5" />
-                            </span>
-                          )}
                         </button>
                       ) : (
                         flexRender(header.column.columnDef.header, header.getContext())
@@ -1184,16 +1178,18 @@ function LeadCardContent({ lead, owner }: { lead: Lead; owner?: OwnerDisplay }) 
     <>
       <p
         className="flex items-center gap-1.5 truncate text-sm font-semibold text-neutral-900"
-        title={lead.company ?? undefined}
+        title={lead.contact_name}
       >
         {lead.closed_at ? (
           <LockIcon className="h-3 w-3 shrink-0 text-neutral-400" aria-label={BOARD_LOCKED_CARD_TOOLTIP} />
         ) : null}
-        {lead.company ?? "—"}
-      </p>
-      <p className="truncate text-xs text-neutral-500" title={lead.contact_name}>
         {lead.contact_name}
       </p>
+      {lead.company ? (
+        <p className="truncate text-xs text-neutral-500" title={lead.company}>
+          {lead.company}
+        </p>
+      ) : null}
       <div className="mt-2.5 flex items-center justify-between gap-2">
         <span className="flex items-center gap-1.5">
           {owner && lead.owner_id ? (
