@@ -1,11 +1,9 @@
 import { redirect } from "next/navigation";
-import { Suspense } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { getAuthenticatedUser, getCurrentMembership } from "@/features/customers/lib/get-current-membership";
 import { getContactsPage } from "@/features/contacts/lib/get-contacts";
 import { getVisibleTeamDirectory } from "@/features/leads/lib/get-team-directory";
 import { ContactsPageClient } from "@/features/contacts/components/contacts-page-client";
-import { DuplicateContactsPanel } from "@/features/contacts/components/duplicate-contacts-panel";
 
 const INITIAL_PAGE_SIZE = 10;
 
@@ -80,18 +78,16 @@ export default async function ContactsPage({ searchParams }: ContactsPageProps) 
       initialLeadId={initialLeadId}
       assignableUsers={assignableUsers}
       currentUserCustomerUserId={membership.membership.id}
-      duplicatesPanel={
-        // fallback={null}: DuplicateContactsSection itself renders
-        // nothing when there are no pairs (the common case), so a
-        // skeleton here would usually just flash and then disappear —
-        // worse than the panel silently popping in only when there's
-        // real content, matching the "no placeholder for an often-empty
-        // panel" reasoning already established for this same section in
-        // Phase 1's loading.tsx.
-        <Suspense fallback={null}>
-          <DuplicateContactsPanel />
-        </Suspense>
-      }
+      // Possible-duplicates panel intentionally disabled for now (soft
+      // removal — the feature itself is untouched, just not called or
+      // rendered here). Was:
+      //   <Suspense fallback={null}><DuplicateContactsPanel /></Suspense>
+      // Re-enable by restoring that. Underlying code left as-is:
+      // DuplicateContactsPanel, DuplicateContactsSection,
+      // getDuplicateCandidates, getDismissedDuplicatePairs,
+      // duplicate-detection.ts, and the contact_duplicate_dismissals
+      // table/migration.
+      duplicatesPanel={null}
     />
   );
 }
