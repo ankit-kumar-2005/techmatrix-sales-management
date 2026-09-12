@@ -1,7 +1,7 @@
 import { currencyFormatter } from "@/utils/format";
 import { CatalogItemActionsMenu } from "./catalog-item-actions-menu";
 import { EditCatalogItemDialog } from "./edit-catalog-item-dialog";
-import type { CatalogItem } from "@/types/catalog";
+import type { CatalogItemListItem } from "../lib/get-catalog-items";
 
 /** Matches the pricing_unit CHECK constraint's exact stored values —
  *  lowercased only for display, per the reference screenshot ("one-time",
@@ -13,7 +13,7 @@ const PRICING_UNIT_LABELS: Record<string, string> = {
 };
 
 type CatalogItemCardProps = {
-  item: CatalogItem;
+  item: CatalogItemListItem;
   /** Only an ADMIN gets the "⋮" activate/deactivate menu and the Edit
    *  control — everyone else still sees the status badge, just not
    *  either control. UX only: the real boundary is

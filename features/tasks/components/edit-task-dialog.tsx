@@ -1,18 +1,23 @@
 "use client";
 
-import { useActionState, useEffect, useMemo } from "react";
+import { useActionState, useEffect } from "react";
 import { Modal } from "@/components/shared/modal";
 import { MessageBanner } from "@/components/shared/message-banner";
 import { updateTaskAction } from "../actions";
 import { initialTaskFormState } from "../form-state";
 import { TaskFormFields, TaskFormSubmitButton } from "./task-form-fields";
 import { TasksIcon } from "@/features/sales-management/components/icons";
-import type { Task } from "@/types/task";
-import type { Lead, TeamDirectoryEntry } from "@/types/lead";
+import type { TaskListItem } from "../lib/get-tasks";
+import type { TeamDirectoryEntry } from "@/types/lead";
 
 type EditTaskDialogProps = {
-  task: Task;
-  leads: Lead[];
+  task: TaskListItem;
+  /** Already resolved by the caller (TaskList already has this task's
+   *  linked-lead label on hand from its own bounded leadLabels — the
+   *  same bucket page this dialog was opened from), so this dialog no
+   *  longer needs the full customer Lead list just to derive one string
+   *  via .find(). */
+  lockedLeadLabel: string;
   assignableUsers: TeamDirectoryEntry[];
   currentUserCustomerUserId: string;
   onClose: () => void;
@@ -31,15 +36,15 @@ type EditTaskDialogProps = {
  * independently re-verify authorization on every submit, including
  * against whichever assignee the caller reassigns it to.
  */
-export function EditTaskDialog({ task, leads, assignableUsers, currentUserCustomerUserId, onClose }: EditTaskDialogProps) {
+export function EditTaskDialog({
+  task,
+  lockedLeadLabel,
+  assignableUsers,
+  currentUserCustomerUserId,
+  onClose,
+}: EditTaskDialogProps) {
   const [state, formAction] = useActionState(updateTaskAction, initialTaskFormState);
   const fieldErrors = state.fieldErrors ?? {};
-
-  const lockedLeadLabel = useMemo(() => {
-    const lead = leads.find((candidate) => candidate.id === task.lead_id);
-    if (!lead) return "";
-    return lead.company ? `${lead.company} — ${lead.contact_name}` : lead.contact_name;
-  }, [leads, task.lead_id]);
 
   // Closing this dialog means calling the PARENT's (TaskList's)
   // setEditingTask(null) — a different component's state, so this must
@@ -67,7 +72,6 @@ export function EditTaskDialog({ task, leads, assignableUsers, currentUserCustom
         <input type="hidden" name="id" value={task.id} />
 
         <TaskFormFields
-          leads={leads}
           assignableUsers={assignableUsers}
           currentUserCustomerUserId={currentUserCustomerUserId}
           fieldErrors={fieldErrors}

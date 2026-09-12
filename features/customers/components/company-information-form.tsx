@@ -5,7 +5,7 @@ import { useFormStatus } from "react-dom";
 import { FormField } from "@/components/shared/form-field";
 import { MessageBanner } from "@/components/shared/message-banner";
 import { BuildingIcon, LocationIcon, LockIcon } from "@/features/sales-management/components/icons";
-import type { Customer } from "@/types/customer";
+import type { CurrentMembershipCustomer } from "@/types/customer";
 import { updateCustomerAction } from "../actions";
 import { initialCustomerFormState } from "../form-state";
 
@@ -24,7 +24,7 @@ function SaveButton() {
 }
 
 type CompanyInformationFormProps = {
-  customer: Customer;
+  customer: CurrentMembershipCustomer;
   /** Only the Primary Admin (customers.created_by === current user) may
    *  edit — enforced again, independently, server-side in
    *  updateCustomerAction and by the "admins can update their customer"

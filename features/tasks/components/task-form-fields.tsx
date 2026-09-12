@@ -16,7 +16,7 @@ import { LeadSearchSelect } from "@/features/leads/components/lead-search-select
 import { getOwnerDisplayLabels } from "@/features/leads/lib/owner-display";
 import { TasksIcon, ClockIcon, UserPlusIcon } from "@/features/sales-management/components/icons";
 import { TASK_PRIORITIES, TASK_STATUSES, TASK_TYPES } from "@/types/task";
-import type { Lead, TeamDirectoryEntry } from "@/types/lead";
+import type { TeamDirectoryEntry } from "@/types/lead";
 
 /** Shared submit button — same look as LeadFormSubmitButton/AddItemButton
  *  elsewhere in this app. */
@@ -35,11 +35,6 @@ export function TaskFormSubmitButton({ idleLabel, pendingLabel }: { idleLabel: s
 }
 
 type TaskFormFieldsProps = {
-  /** Every Lead the caller can currently see (RLS-scoped already, same
-   *  array the Pipeline page fetches) — a task can only ever be attached
-   *  to one of these, matching "do not expose another customer's/
-   *  branch's leads in the selector." */
-  leads: Lead[];
   /** The caller's own hierarchy-visible teammates
    *  (getVisibleTeamDirectory) — ADMIN gets everyone in the customer,
    *  everyone else gets themselves + their recursive reports. The same
@@ -55,9 +50,11 @@ type TaskFormFieldsProps = {
   fieldErrors: Record<string, string>;
   /** Set when opened from a Lead's own "Add Task" action — preselects
    *  the Lead field (still changeable) rather than requiring it be
-   *  picked again. Ignored (and does nothing) when defaultValues is also
-   *  set — edit mode shows Lead as read-only instead, see below. */
-  defaultLeadId?: string;
+   *  picked again, without needing the full customer Lead list (the
+   *  caller already has the one Lead object this applies to). Ignored
+   *  (and does nothing) when defaultValues is also set — edit mode shows
+   *  Lead as read-only instead, see below. */
+  defaultLead?: { id: string; label: string };
   /** Present only when editing an existing task — pre-fills every field
    *  and adds a Status field (a new task always starts at the database's
    *  own DEFAULT 'Pending', so create mode has no Status control; editing
@@ -82,11 +79,10 @@ type TaskFormFieldsProps = {
 };
 
 export function TaskFormFields({
-  leads,
   assignableUsers,
   currentUserCustomerUserId,
   fieldErrors,
-  defaultLeadId,
+  defaultLead,
   defaultValues,
   lockedLeadLabel,
 }: TaskFormFieldsProps) {
@@ -153,8 +149,7 @@ export function TaskFormFields({
             id="task-lead"
             name="lead_id"
             required
-            leads={leads}
-            defaultLeadId={defaultLeadId}
+            defaultLead={defaultLead}
             error={fieldErrors.lead_id}
           />
         )}

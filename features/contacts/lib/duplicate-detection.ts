@@ -1,6 +1,5 @@
 import Fuse from "fuse.js";
-import type { Contact } from "@/types/contact";
-import type { DismissedPair } from "./get-contacts";
+import type { DismissedPair, DuplicateCandidateContact } from "./get-contacts";
 
 const MAX_DUPLICATE_PAIRS = 20;
 
@@ -51,7 +50,7 @@ type DuplicateSearchDoc = {
   profile: string;
 };
 
-function toSearchDoc(contact: Contact): DuplicateSearchDoc {
+function toSearchDoc(contact: DuplicateCandidateContact): DuplicateSearchDoc {
   const name = normalizeName(contact.name);
   const company = normalizeName(contact.company);
   const title = normalizeName(contact.title);
@@ -70,8 +69,8 @@ function toSearchDoc(contact: Contact): DuplicateSearchDoc {
 }
 
 export type DuplicatePair = {
-  contactA: Contact;
-  contactB: Contact;
+  contactA: DuplicateCandidateContact;
+  contactB: DuplicateCandidateContact;
   /** Fuse's own match score for this pair — lower is a closer match.
    *  Exposed for potential future UI ("strong match" vs "possible
    *  match"), not currently rendered. */
@@ -102,7 +101,10 @@ export type DuplicatePair = {
  * scoped by its own RLS) are filtered out before returning — a user's
  * "Not a duplicate" must not keep resurfacing on the next visit.
  */
-export function findPossibleDuplicates(candidates: Contact[], dismissedPairs: DismissedPair[]): DuplicatePair[] {
+export function findPossibleDuplicates(
+  candidates: DuplicateCandidateContact[],
+  dismissedPairs: DismissedPair[],
+): DuplicatePair[] {
   if (candidates.length < 2) {
     return [];
   }

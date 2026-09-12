@@ -9,17 +9,19 @@ import { LeadFormFields, LeadFormSubmitButton } from "./lead-form-fields";
 // The Tasks module's own creation dialog, reused as-is (not a second
 // task-creation implementation) — see Section 26 of the Tasks spec:
 // "Create Task from Lead" must reuse the same component, just with this
-// lead preselected. leads=[lead] (rather than threading the customer's
-// entire lead list through this dialog too) makes that preselection the
-// Lead field's only option, without needing a separate "locked" mode in
-// TaskFormFields.
+// lead preselected. defaultLead={{id, label}} (rather than threading the
+// customer's entire lead list through this dialog too) makes that
+// preselection the Lead field's only option, without needing a separate
+// "locked" mode in TaskFormFields.
 import { AddTaskDialog } from "@/features/tasks/components/add-task-dialog";
+import { formatLeadLabel } from "@/features/leads/lib/get-lead-labels";
+import type { PipelineLead } from "@/features/leads/lib/get-leads";
 import { LeadCaptureIcon, PlusIcon } from "@/features/sales-management/components/icons";
-import type { CustomerLeadStage, Lead, TeamDirectoryEntry } from "@/types/lead";
+import type { CustomerLeadStage, TeamDirectoryEntry } from "@/types/lead";
 import type { CustomerRole } from "@/types/customer";
 
 type EditLeadDialogProps = {
-  lead: Lead;
+  lead: PipelineLead;
   stages: CustomerLeadStage[];
   owners: TeamDirectoryEntry[];
   role: CustomerRole;
@@ -93,10 +95,9 @@ export function EditLeadDialog({
             not a descendant of the Edit Lead <form>, is what keeps the
             two completely independent. */}
         <AddTaskDialog
-          leads={[lead]}
           assignableUsers={owners}
           currentUserCustomerUserId={currentUserCustomerUserId}
-          defaultLeadId={lead.id}
+          defaultLead={{ id: lead.id, label: formatLeadLabel(lead) }}
           renderTrigger={(open) => (
             <button
               type="button"

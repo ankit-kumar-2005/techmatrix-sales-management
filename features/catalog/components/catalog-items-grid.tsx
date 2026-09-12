@@ -5,7 +5,7 @@ import { CatalogItemCard } from "./catalog-item-card";
 import { NewCatalogItemDialog } from "./new-catalog-item-dialog";
 import { ChevronDownIcon, SearchIcon } from "@/features/sales-management/components/icons";
 import { getCatalogItemsPageAction } from "../actions";
-import type { CatalogItem } from "@/types/catalog";
+import type { CatalogItemListItem } from "../lib/get-catalog-items";
 
 const PAGE_SIZE_OPTIONS = [3, 6, 9] as const;
 const SEARCH_DEBOUNCE_MS = 300;
@@ -23,7 +23,7 @@ type CatalogItemsGridProps = {
    *  loaded table (see that action's own comment on why this needed to
    *  become a real Supabase .range()/.count() query once a catalog can
    *  hold hundreds of items). */
-  initialItems: CatalogItem[];
+  initialItems: CatalogItemListItem[];
   initialTotalCount: number;
   /** Every distinct category value this customer's catalog currently
    *  uses — fetched once server-side (category is free text, not a

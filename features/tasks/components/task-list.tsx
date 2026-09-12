@@ -7,12 +7,13 @@ import { completeTaskAction, getTasksBucketPageAction } from "../actions";
 import { TaskDetailModal } from "./task-detail-modal";
 import { EditTaskDialog } from "./edit-task-dialog";
 import { LeadSearchSelect } from "@/features/leads/components/lead-search-select";
+import { formatLeadLabel, type LeadLabel } from "@/features/leads/lib/get-lead-labels";
 import { ChevronDownIcon, LeadCaptureIcon, PencilIcon, SearchIcon } from "@/features/sales-management/components/icons";
 import { dateFormatter } from "@/utils/format";
 import { TASK_PRIORITIES, TASK_TYPES } from "@/types/task";
-import type { TaskDueBucket, TasksBucketPage } from "../lib/get-tasks";
-import type { Task, TaskPriority } from "@/types/task";
-import type { Lead, TeamDirectoryEntry } from "@/types/lead";
+import type { TaskDueBucket, TasksBucketPage, TaskListItem } from "../lib/get-tasks";
+import type { TaskPriority } from "@/types/task";
+import type { TeamDirectoryEntry } from "@/types/lead";
 
 // The Rows-per-page choices and their default — same three options and
 // same default the Pipeline List View's own "Rows per page" selector
@@ -131,7 +132,6 @@ type TaskListProps = {
    *  read from the URL's own searchParams the same way every other
    *  filter here already is. */
   initialLeadId: string;
-  leads: Lead[];
   /** The caller's own hierarchy-visible teammates — used both for the
    *  Owner filter and for resolving each task's assignee display, same
    *  source AddTaskDialog's Assign picker uses. */
@@ -181,7 +181,6 @@ export function TaskList({
   initialStatus,
   initialDueBucket,
   initialLeadId,
-  leads,
   assignableUsers,
   currentUserCustomerUserId,
   refreshToken,
@@ -196,8 +195,8 @@ export function TaskList({
   const [dueBucketFilter, setDueBucketFilter] = useState<TaskDueBucket | "">(initialDueBucket);
   const [leadFilter, setLeadFilter] = useState(initialLeadId);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
-  const [detailTask, setDetailTask] = useState<Task | null>(null);
-  const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [detailTask, setDetailTask] = useState<TaskListItem | null>(null);
+  const [editingTask, setEditingTask] = useState<TaskListItem | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
   // Debounce: only the committed value drives an actual fetch in each
@@ -241,7 +240,32 @@ export function TaskList({
     searchInput || ownerFilter || typeFilter || priorityFilter || statusFilter || dueBucketFilter || leadFilter,
   );
 
-  const leadsById = useMemo(() => new Map(leads.map((lead) => [lead.id, lead])), [leads]);
+  // Each bucket resolves labels only for the Leads ITS OWN currently-
+  // loaded tasks link to (bounded — see getTasksBucketPage's own
+  // comment) and reports them up here via onLeadLabelsChange, since
+  // TaskDetailModal/EditTaskDialog below can be opened for a task from
+  // ANY bucket. Seeded from initialBuckets so both are already correct
+  // before any bucket's own client-driven re-fetch ever runs.
+  const [bucketLeadLabels, setBucketLeadLabels] = useState<Partial<Record<TaskDueBucket, LeadLabel[]>>>(() => {
+    const seed: Partial<Record<TaskDueBucket, LeadLabel[]>> = {};
+    for (const bucket of ALL_BUCKETS) {
+      const page = initialBuckets[bucket];
+      if (page) seed[bucket] = page.leadLabels;
+    }
+    return seed;
+  });
+
+  const leadLabelById = useMemo(() => {
+    const map = new Map<string, LeadLabel>();
+    for (const labels of Object.values(bucketLeadLabels)) {
+      for (const lead of labels ?? []) map.set(lead.id, lead);
+    }
+    return map;
+  }, [bucketLeadLabels]);
+
+  function handleBucketLeadLabelsChange(bucket: TaskDueBucket, labels: LeadLabel[]) {
+    setBucketLeadLabels((current) => ({ ...current, [bucket]: labels }));
+  }
 
   const assigneeDisplayById = useMemo(() => {
     const labels = getOwnerDisplayLabels(assignableUsers);
@@ -276,7 +300,7 @@ export function TaskList({
   // (no per-row optimism to manage here — the modal closes immediately
   // either way, see TaskDetailModal's own onComplete) and just asks
   // every visible bucket to refresh once the database is done.
-  async function handleCompleteFromModal(task: Task) {
+  async function handleCompleteFromModal(task: TaskListItem) {
     const result = await completeTaskAction(task.id);
     if (!result.success) {
       setActionError(result.error ?? "Unable to complete this task. Please try again.");
@@ -317,21 +341,17 @@ export function TaskList({
               />
             </div>
 
-            {/* The primary addition this round — "quickly find all Tasks
-                associated with a Lead." Controlled mode (value/onChange,
-                no `name`) + hideLabel, the exact same pattern
-                ContactList's own Lead filter already established: only
-                Leads the caller can already see (the same RLS-scoped
-                `leads` array AddTaskDialog/EditTaskDialog use) ever
-                appear here, so a cross-tenant Lead can never be
-                selected — the server query re-scopes to customer_id and
-                RLS independently regardless. */}
+            {/* "Quickly find all Tasks associated with a Lead." Controlled
+                mode (value/onChange, no `name`) + hideLabel, the exact
+                same pattern ContactList's own Lead filter already
+                established — LeadSearchSelect's own search is server-side
+                and customer-scoped, so a cross-tenant Lead can never even
+                be offered here. */}
             <div className="w-full shrink-0 sm:w-64">
               <LeadSearchSelect
                 id="task-lead-filter"
                 label="Lead"
                 hideLabel
-                leads={leads}
                 value={leadFilter}
                 onChange={setLeadFilter}
                 placeholder="All leads — search by name, company, email, or phone..."
@@ -458,12 +478,12 @@ export function TaskList({
                 leadId={leadFilter}
                 pageSize={pageSize}
                 refreshToken={refreshToken}
-                leadsById={leadsById}
                 assigneeDisplayById={assigneeDisplayById}
                 onView={setDetailTask}
                 onEdit={setEditingTask}
                 onError={setActionError}
                 onRefreshAll={onRefreshAll}
+                onLeadLabelsChange={(labels) => handleBucketLeadLabelsChange(bucket, labels)}
               />
             ))}
           </div>
@@ -506,7 +526,7 @@ export function TaskList({
       {detailTask ? (
         <TaskDetailModal
           task={detailTask}
-          lead={leadsById.get(detailTask.lead_id)}
+          lead={leadLabelById.get(detailTask.lead_id)}
           assignee={assigneeDisplayById.get(detailTask.assigned_to)}
           onComplete={() => handleCompleteFromModal(detailTask)}
           onClose={() => setDetailTask(null)}
@@ -516,7 +536,9 @@ export function TaskList({
       {editingTask ? (
         <EditTaskDialog
           task={editingTask}
-          leads={leads}
+          lockedLeadLabel={
+            leadLabelById.has(editingTask.lead_id) ? formatLeadLabel(leadLabelById.get(editingTask.lead_id)!) : ""
+          }
           assignableUsers={assignableUsers}
           currentUserCustomerUserId={currentUserCustomerUserId}
           onClose={() => {
@@ -557,16 +579,23 @@ type TaskGroupSectionProps = {
    *  pagination back to page 1. */
   pageSize: number;
   refreshToken: number;
-  leadsById: Map<string, Lead>;
   assigneeDisplayById: Map<string, OwnerDisplay>;
-  onView: (task: Task) => void;
-  onEdit: (task: Task) => void;
+  onView: (task: TaskListItem) => void;
+  onEdit: (task: TaskListItem) => void;
   onError: (message: string) => void;
   /** Bumps the PARENT's refreshToken — used after this section's own
    *  row-level complete succeeds, since completing a task changes its
    *  status, which can move it in or out of what the current Status
    *  filter matches. */
   onRefreshAll: () => void;
+  /** Reports this bucket's own current (bounded) lead labels up to
+   *  TaskList, which merges every visible bucket's own set — needed for
+   *  TaskDetailModal/EditTaskDialog, either of which can be opened for a
+   *  task from ANY bucket, not just this one. Fired only when this
+   *  section's OWN labels actually change (a fresh fetch); TaskList
+   *  seeds its own initial merge from `initialBuckets` directly, so
+   *  there's no need to also fire this once on mount. */
+  onLeadLabelsChange: (labels: LeadLabel[]) => void;
 };
 
 /**
@@ -590,17 +619,30 @@ function TaskGroupSection({
   leadId,
   pageSize,
   refreshToken,
-  leadsById,
   assigneeDisplayById,
   onView,
   onEdit,
   onError,
   onRefreshAll,
+  onLeadLabelsChange,
 }: TaskGroupSectionProps) {
   const [tasks, setTasks] = useState(initialPage?.tasks ?? []);
   const [totalCount, setTotalCount] = useState(initialPage?.totalCount ?? 0);
+  const [leadLabels, setLeadLabels] = useState(initialPage?.leadLabels ?? []);
   const [page, setPage] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
+
+  const leadsById = useMemo(() => new Map(leadLabels.map((lead) => [lead.id, lead])), [leadLabels]);
+
+  // A fresh closure every TaskList render (it closes over `bucket`) — read
+  // via a ref inside the fetch effect below rather than listed as a
+  // dependency, the same "ref-to-latest-callback" pattern Modal's own
+  // onCloseRef uses, so a parent re-render alone can never re-trigger
+  // that effect.
+  const onLeadLabelsChangeRef = useRef(onLeadLabelsChange);
+  useEffect(() => {
+    onLeadLabelsChangeRef.current = onLeadLabelsChange;
+  }, [onLeadLabelsChange]);
 
   // Recomputed from the BROWSER's own clock on every render (a cheap
   // string comparison, not worth memoizing) — this is what makes bucket
@@ -702,6 +744,8 @@ function TaskGroupSection({
 
         setTasks(result.tasks);
         setTotalCount(result.totalCount);
+        setLeadLabels(result.leadLabels);
+        onLeadLabelsChangeRef.current(result.leadLabels);
         setIsLoading(false);
       },
     );
@@ -709,13 +753,13 @@ function TaskGroupSection({
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- todayStr/initialTodayStr/initialPage are intentionally read via closure above rather than listed: they only matter for the very first run (guarded by isFirstRun), and re-including them here would re-run this effect on every render since todayStr is recomputed fresh each time
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- todayStr/initialTodayStr/initialPage are intentionally read via closure above rather than listed: they only matter for the very first run (guarded by isFirstRun), and re-including them here would re-run this effect on every render since todayStr is recomputed fresh each time; onLeadLabelsChange is read via a ref (see its own comment) rather than listed, for the same reason it's excluded everywhere else in this app (AddTaskDialog/NewContactDialog's identical onSuccess effects) — a fresh closure every parent render, and listing it would re-run this whole fetch effect for that alone.
   }, [bucket, search, ownerId, type, priority, status, leadId, page, pageSize, refreshToken]);
 
   const pageCount = Math.max(Math.ceil(totalCount / pageSize), 1);
   const currentPage = Math.min(page, pageCount - 1);
 
-  async function handleComplete(task: Task) {
+  async function handleComplete(task: TaskListItem) {
     // A "Pending only" filter means a task that just became Completed no
     // longer belongs in this list at all — remove it optimistically.
     // Under "All" or (impossible here, since the checkbox is disabled
@@ -821,9 +865,9 @@ function TaskGroupSection({
 }
 
 type TaskRowProps = {
-  task: Task;
+  task: TaskListItem;
   tone: TaskDueBucket;
-  lead?: Lead;
+  lead?: LeadLabel;
   assignee?: OwnerDisplay;
   onComplete: () => void;
   onView: () => void;
@@ -876,7 +920,7 @@ function TaskRow({ task, tone, lead, assignee, onComplete, onView, onEdit }: Tas
             <span className="inline-flex max-w-full items-center gap-1 rounded-full bg-sky-50 px-2 py-0.5 text-[10px] font-bold text-sky-700 ring-1 ring-sky-100">
               <LeadCaptureIcon className="h-2.5 w-2.5 shrink-0" />
               <span className="truncate">
-                {lead.company ? `${lead.company} — ${lead.contact_name}` : lead.contact_name}
+                {formatLeadLabel(lead)}
               </span>
             </span>
           </p>

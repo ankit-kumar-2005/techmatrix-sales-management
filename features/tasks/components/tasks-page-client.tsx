@@ -5,7 +5,7 @@ import { AddTaskDialog } from "./add-task-dialog";
 import { TaskList } from "./task-list";
 import { PlusIcon } from "@/features/sales-management/components/icons";
 import type { TaskDueBucket, TasksBucketPage } from "../lib/get-tasks";
-import type { Lead, TeamDirectoryEntry } from "@/types/lead";
+import type { TeamDirectoryEntry } from "@/types/lead";
 
 type TasksPageClientProps = {
   initialBuckets: Partial<Record<TaskDueBucket, TasksBucketPage>>;
@@ -17,7 +17,6 @@ type TasksPageClientProps = {
   initialStatus: string;
   initialDueBucket: TaskDueBucket | "";
   initialLeadId: string;
-  leads: Lead[];
   assignableUsers: TeamDirectoryEntry[];
   currentUserCustomerUserId: string;
 };
@@ -60,7 +59,6 @@ export function TasksPageClient({
   initialStatus,
   initialDueBucket,
   initialLeadId,
-  leads,
   assignableUsers,
   currentUserCustomerUserId,
 }: TasksPageClientProps) {
@@ -81,7 +79,6 @@ export function TasksPageClient({
         </div>
 
         <AddTaskDialog
-          leads={leads}
           assignableUsers={assignableUsers}
           currentUserCustomerUserId={currentUserCustomerUserId}
           onSuccess={() => setRefreshToken((token) => token + 1)}
@@ -108,7 +105,6 @@ export function TasksPageClient({
         initialStatus={initialStatus}
         initialDueBucket={initialDueBucket}
         initialLeadId={initialLeadId}
-        leads={leads}
         assignableUsers={assignableUsers}
         currentUserCustomerUserId={currentUserCustomerUserId}
         refreshToken={refreshToken}

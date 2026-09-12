@@ -35,6 +35,8 @@ import { EditLeadDialog } from "./edit-lead-dialog";
 // EditLeadDialog's own "Add Task" trigger — no new "locked lead" mode
 // was added to TaskFormFields for this.
 import { AddTaskDialog } from "@/features/tasks/components/add-task-dialog";
+import { formatLeadLabel } from "@/features/leads/lib/get-lead-labels";
+import type { PipelineLead } from "@/features/leads/lib/get-leads";
 import { MessageBanner } from "@/components/shared/message-banner";
 import {
   SearchIcon,
@@ -49,7 +51,7 @@ import { LEAD_SOURCES } from "../schemas";
 import { stageDotClass } from "../lib/stage-colors";
 import { getOwnerAvatarColor, getOwnerDisplayLabels, getOwnerInitials, getOwnerTooltip } from "../lib/owner-display";
 import { moveLeadStageAction } from "../actions";
-import type { CustomerLeadStage, Lead, TeamDirectoryEntry } from "@/types/lead";
+import type { CustomerLeadStage, TeamDirectoryEntry } from "@/types/lead";
 import type { CustomerRole } from "@/types/customer";
 
 const UNASSIGNED = "unassigned";
@@ -78,7 +80,7 @@ const BOARD_LOCKED_CARD_TOOLTIP = "This lead is closed and can't be moved";
  *  Pipeline board's drag handle so the two can never silently diverge —
  *  both are UX-only conveniences either way: updateLeadAction and
  *  moveLeadStageAction each re-check the same rule server-side. */
-function canManageLead(lead: Lead, role: CustomerRole, currentUserCustomerUserId: string): boolean {
+function canManageLead(lead: PipelineLead, role: CustomerRole, currentUserCustomerUserId: string): boolean {
   return !lead.closed_at && (role === "ADMIN" || lead.owner_id === currentUserCustomerUserId);
 }
 
@@ -131,7 +133,7 @@ function LeadActivityButton({
 type OwnerDisplay = { label: string; initials: string; tooltip: string };
 
 type PipelineViewProps = {
-  leads: Lead[];
+  leads: PipelineLead[];
   /** All of the customer's stages (active and inactive), ordered by
    *  display_order — the filter dropdown narrows to Active ones itself
    *  (see Section 35 of the spec), but List/Board/badges use the full
@@ -167,7 +169,7 @@ export function PipelineView({ leads, stages, owners, role, currentUserEmail, cu
   const [stageFilter, setStageFilter] = useState("");
   const [ownerFilter, setOwnerFilter] = useState("");
   const [sourceFilter, setSourceFilter] = useState("");
-  const [editingLead, setEditingLead] = useState<Lead | null>(null);
+  const [editingLead, setEditingLead] = useState<PipelineLead | null>(null);
 
   // A local, mutable mirror of the `leads` prop — needed so the Pipeline
   // board's drag-and-drop can move a card the instant it's dropped
@@ -478,12 +480,12 @@ export function PipelineView({ leads, stages, owners, role, currentUserEmail, cu
 }
 
 type ListViewProps = {
-  leads: Lead[];
+  leads: PipelineLead[];
   stagesById: Map<string, CustomerLeadStage>;
   ownerDisplayById: Map<string, OwnerDisplay>;
   role: CustomerRole;
   currentUserCustomerUserId: string;
-  onEdit: (lead: Lead) => void;
+  onEdit: (lead: PipelineLead) => void;
   /** The caller's own hierarchy-visible teammates
    *  (getVisibleTeamDirectory) — passed straight through to each row's
    *  embedded AddTaskDialog as its Assign picker's options, the exact
@@ -534,7 +536,7 @@ function ListView({
     setPagination((current) => (current.pageIndex === 0 ? current : { ...current, pageIndex: 0 }));
   }, [leads, sorting]);
 
-  const columns = useMemo<ColumnDef<Lead>[]>(
+  const columns = useMemo<ColumnDef<PipelineLead>[]>(
     () => [
       {
         id: "lead",
@@ -653,10 +655,9 @@ function ListView({
                 <LeadActivityButton contactName={lead.contact_name} locked />
               ) : (
                 <AddTaskDialog
-                  leads={[lead]}
                   assignableUsers={assignableUsers}
                   currentUserCustomerUserId={currentUserCustomerUserId}
-                  defaultLeadId={lead.id}
+                  defaultLead={{ id: lead.id, label: formatLeadLabel(lead) }}
                   title={`Create task for ${lead.contact_name}`}
                   renderTrigger={(open) => <LeadActivityButton contactName={lead.contact_name} onClick={open} />}
                 />
@@ -813,7 +814,7 @@ function ListView({
 }
 
 type BoardViewProps = {
-  leads: Lead[];
+  leads: PipelineLead[];
   stages: CustomerLeadStage[];
   ownerDisplayById: Map<string, OwnerDisplay>;
   role: CustomerRole;
@@ -1009,7 +1010,7 @@ function BoardView({ leads, stages, ownerDisplayById, role, currentUserCustomerU
 
 type BoardColumnProps = {
   stage: CustomerLeadStage;
-  leads: Lead[];
+  leads: PipelineLead[];
   total: number;
   ownerDisplayById: Map<string, OwnerDisplay>;
   role: CustomerRole;
@@ -1119,7 +1120,7 @@ function BoardColumn({
 }
 
 type DraggableLeadCardProps = {
-  lead: Lead;
+  lead: PipelineLead;
   owner?: OwnerDisplay;
   /** False either because the lead is closed (a real, permanent lock)
    *  or because this user isn't its owner/an admin (the same rule
@@ -1173,7 +1174,7 @@ function DraggableLeadCard({ lead, owner, canDrag }: DraggableLeadCardProps) {
  *  DraggableLeadCard and the DragOverlay's floating clone — so the
  *  "lifted" card the user sees following their pointer/focus is exactly
  *  the same content, not a re-derived approximation of it. */
-function LeadCardContent({ lead, owner }: { lead: Lead; owner?: OwnerDisplay }) {
+function LeadCardContent({ lead, owner }: { lead: PipelineLead; owner?: OwnerDisplay }) {
   return (
     <>
       <p

@@ -1,20 +1,24 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { NewContactDialog } from "./new-contact-dialog";
-import { DuplicateContactsSection } from "./duplicate-contacts-section";
 import { ContactList } from "./contact-list";
 import { PlusIcon } from "@/features/sales-management/components/icons";
 import type { ContactsPage } from "../lib/get-contacts";
-import type { DuplicatePair } from "../lib/duplicate-detection";
-import type { Lead, TeamDirectoryEntry } from "@/types/lead";
+import type { TeamDirectoryEntry } from "@/types/lead";
 
 type ContactsPageClientProps = {
   initialPage: ContactsPage;
   initialSearch: string;
   initialLeadId: string;
-  initialDuplicatePairs: DuplicatePair[];
-  leads: Lead[];
+  /** The already-Suspense-wrapped <DuplicateContactsPanel /> element,
+   *  instantiated by the page (a Server Component) and passed down as an
+   *  opaque slot (Phase 7) — this component doesn't fetch duplicate
+   *  candidates or run Fuse.js itself, and doesn't need to know that the
+   *  element it's rendering here is a Server Component streamed in later;
+   *  it just renders it in the same position DuplicateContactsSection
+   *  used to occupy directly. */
+  duplicatesPanel: ReactNode;
   /** The caller's own hierarchy-visible teammates (getVisibleTeamDirectory)
    *  — used both for the New Contact dialog's Owner picker and for
    *  resolving each listed contact's owner display (initials/label),
@@ -39,8 +43,7 @@ export function ContactsPageClient({
   initialPage,
   initialSearch,
   initialLeadId,
-  initialDuplicatePairs,
-  leads,
+  duplicatesPanel,
   assignableUsers,
   currentUserCustomerUserId,
 }: ContactsPageClientProps) {
@@ -61,7 +64,6 @@ export function ContactsPageClient({
         </div>
 
         <NewContactDialog
-          leads={leads}
           assignableUsers={assignableUsers}
           currentUserCustomerUserId={currentUserCustomerUserId}
           onSuccess={() => setRefreshToken((token) => token + 1)}
@@ -78,7 +80,7 @@ export function ContactsPageClient({
         />
       </div>
 
-      <DuplicateContactsSection initialPairs={initialDuplicatePairs} />
+      {duplicatesPanel}
 
       <ContactList
         initialPage={initialPage}
@@ -86,7 +88,6 @@ export function ContactsPageClient({
         initialLeadId={initialLeadId}
         refreshToken={refreshToken}
         assignableUsers={assignableUsers}
-        leads={leads}
         currentUserCustomerUserId={currentUserCustomerUserId}
       />
     </div>

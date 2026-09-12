@@ -40,9 +40,12 @@ export const createClient = cache(async function createClient() {
             );
           } catch {
             // setAll was called from a Server Component that can't set
-            // cookies (e.g. during rendering). Safe to ignore here since
-            // no session-refreshing middleware exists yet in this
-            // foundation-only setup.
+            // cookies (e.g. during rendering). Safe to ignore here
+            // because proxy.ts's own updateSession() already refreshes
+            // and writes the session cookie before any Server Component
+            // ever renders (see its own comment) — this client's setAll
+            // genuinely never needs to do anything, not "doesn't have
+            // to yet."
           }
         },
       },

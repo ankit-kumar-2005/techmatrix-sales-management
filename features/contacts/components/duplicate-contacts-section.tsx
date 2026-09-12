@@ -4,7 +4,7 @@ import { useState } from "react";
 import { MessageBanner } from "@/components/shared/message-banner";
 import { dismissDuplicateAction } from "../actions";
 import type { DuplicatePair } from "../lib/duplicate-detection";
-import type { Contact } from "@/types/contact";
+import type { DuplicateCandidateContact } from "../lib/get-contacts";
 
 type DuplicateContactsSectionProps = {
   /** Computed once server-side (getPossibleDuplicatesAction, already
@@ -17,7 +17,7 @@ type DuplicateContactsSectionProps = {
   initialPairs: DuplicatePair[];
 };
 
-function contactSummary(contact: Contact): string {
+function contactSummary(contact: DuplicateCandidateContact): string {
   return [contact.company, contact.title].filter(Boolean).join(" · ");
 }
 
@@ -116,7 +116,7 @@ export function DuplicateContactsSection({ initialPairs }: DuplicateContactsSect
   );
 }
 
-function DuplicateContactCard({ contact }: { contact: Contact }) {
+function DuplicateContactCard({ contact }: { contact: DuplicateCandidateContact }) {
   const summary = contactSummary(contact);
   return (
     <div className="min-w-0 flex-1 rounded-xl bg-neutral-50 p-3.5">

@@ -12,7 +12,7 @@ import { LeadSearchSelect } from "@/features/leads/components/lead-search-select
 // reimplementation of it.
 import { getOwnerDisplayLabels } from "@/features/leads/lib/owner-display";
 import { ContactsIcon, LeadCaptureIcon, UserPlusIcon } from "@/features/sales-management/components/icons";
-import type { Lead, TeamDirectoryEntry } from "@/types/lead";
+import type { TeamDirectoryEntry } from "@/types/lead";
 
 /** Same look as TaskFormSubmitButton/LeadFormSubmitButton elsewhere in
  *  this app. */
@@ -31,11 +31,6 @@ export function ContactFormSubmitButton({ idleLabel, pendingLabel }: { idleLabel
 }
 
 type ContactFormFieldsProps = {
-  /** Every Lead the caller can currently see (RLS-scoped already, the
-   *  same array the Tasks/Pipeline pages fetch) — a contact can only ever
-   *  be attached to one of these. Independent from `owner_id`/Owner
-   *  below — a contact's owner does not have to be its Lead's owner. */
-  leads: Lead[];
   /** The caller's own hierarchy-visible teammates (getVisibleTeamDirectory)
    *  — ADMIN gets everyone in the customer, everyone else gets themselves
    *  + their recursive reports, the SAME list and SAME RPC
@@ -71,7 +66,6 @@ type ContactFormFieldsProps = {
 };
 
 export function ContactFormFields({
-  leads,
   assignableUsers,
   currentUserCustomerUserId,
   fieldErrors,
@@ -171,7 +165,6 @@ export function ContactFormFields({
             id="contact-lead"
             name="lead_id"
             required
-            leads={leads}
             error={fieldErrors.lead_id}
             helperText="Every contact must be linked to a lead. Independent from Owner below."
           />

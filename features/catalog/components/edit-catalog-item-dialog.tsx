@@ -8,10 +8,10 @@ import { TagIcon } from "@/features/sales-management/components/icons";
 import { updateCatalogItemAction } from "../actions";
 import { initialCatalogItemFormState } from "../form-state";
 import { CatalogItemFormFields, CatalogItemFormSubmitButton } from "./catalog-item-form-fields";
-import type { CatalogItem } from "@/types/catalog";
+import type { CatalogItemListItem } from "../lib/get-catalog-items";
 
 type EditCatalogItemDialogProps = {
-  item: CatalogItem;
+  item: CatalogItemListItem;
   /** Called after a successful save (in addition to closing the dialog)
    *  so the caller (the paginated grid) can re-fetch whatever it's
    *  currently showing — same search/filter/page, unlike creating a

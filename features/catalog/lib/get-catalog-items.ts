@@ -42,8 +42,20 @@ export type CatalogItemsPageParams = {
   pageSize: number;
 };
 
+/** What CatalogItemCard/EditCatalogItemDialog/CatalogItemActionsMenu
+ *  actually read off a listed item — traced consumer by consumer (Phase
+ *  3 column projection): the card itself (name, category, price,
+ *  pricing_unit, description, status) and `id` for all of the above.
+ *  customer_id (filtered on, never displayed), created_by, created_at,
+ *  and updated_at (sorted on, never displayed) are confirmed unused by
+ *  any consumer and dropped from the query's own select list below. */
+export type CatalogItemListItem = Pick<
+  CatalogItem,
+  "id" | "name" | "category" | "price" | "pricing_unit" | "description" | "status"
+>;
+
 export type CatalogItemsPage = {
-  items: CatalogItem[];
+  items: CatalogItemListItem[];
   /** Total rows matching the current search/category filter (not just
    *  this page) — from a `{ count: "exact", head: true }`-equivalent
    *  request alongside the row fetch, what the page indicator and the
@@ -71,7 +83,7 @@ export async function getCatalogItemsPage(
 
   let query = supabase
     .from("customer_catalog_items")
-    .select("*", { count: "exact" })
+    .select("id, name, category, price, pricing_unit, description, status", { count: "exact" })
     .eq("customer_id", customerId);
 
   const trimmedSearch = params.search.trim();
@@ -88,7 +100,7 @@ export async function getCatalogItemsPage(
     return { items: [], totalCount: 0 };
   }
 
-  return { items: data as CatalogItem[], totalCount: count ?? 0 };
+  return { items: data as CatalogItemListItem[], totalCount: count ?? 0 };
 }
 
 /**

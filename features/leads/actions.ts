@@ -5,6 +5,8 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getFieldErrors } from "@/features/auth/lib/get-field-errors";
 import { getCurrentMembership } from "@/features/customers/lib/get-current-membership";
+import { searchLeadsForPicker, type LeadSearchResult } from "./lib/search-leads";
+import { getLeadLabelsByIds, type LeadLabel } from "./lib/get-lead-labels";
 import {
   createLeadSchema,
   createLeadStageSchema,
@@ -13,6 +15,56 @@ import {
 } from "./schemas";
 import type { LeadFormState } from "./form-state";
 import type { LeadStageFormState } from "./stage-form-state";
+
+/**
+ * Read-only — backs LeadSearchSelect's own live search (Contacts/Tasks
+ * create forms and Lead filters). Same thin "resolve membership, delegate
+ * to the lib function" shape as getContactsPageAction/
+ * getTasksBucketPageAction, just living here in features/leads/ since
+ * Lead search belongs to the Leads domain, not either of its two callers.
+ */
+export async function searchLeadsAction(query: string): Promise<LeadSearchResult[]> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    redirect("/login");
+  }
+
+  const membership = await getCurrentMembership(supabase, user.id);
+  if (!membership) {
+    redirect("/signup");
+  }
+
+  return searchLeadsForPicker(supabase, membership.customer.id, query);
+}
+
+/**
+ * Read-only — resolves a bounded set of lead_ids into display labels.
+ * Two callers: LeadSearchSelect itself (a controlled `value` arriving
+ * from outside whose label this component hasn't seen yet — e.g. a
+ * URL-seeded Lead filter on first mount), and ContactList/TaskList
+ * resolving the Lead badge/detail/locked-edit-label for whichever
+ * contacts/tasks are on the CURRENT page — never the full customer Lead
+ * list either way.
+ */
+export async function getLeadLabelsAction(leadIds: string[]): Promise<LeadLabel[]> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    redirect("/login");
+  }
+
+  const membership = await getCurrentMembership(supabase, user.id);
+  if (!membership) {
+    redirect("/signup");
+  }
+
+  return getLeadLabelsByIds(supabase, membership.customer.id, leadIds);
+}
 
 /**
  * customer_id is never read from the form — it's derived from the

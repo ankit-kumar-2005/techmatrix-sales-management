@@ -1,18 +1,23 @@
 "use client";
 
-import { useActionState, useEffect, useMemo } from "react";
+import { useActionState, useEffect } from "react";
 import { Modal } from "@/components/shared/modal";
 import { MessageBanner } from "@/components/shared/message-banner";
 import { updateContactAction } from "../actions";
 import { initialContactFormState } from "../form-state";
 import { ContactFormFields, ContactFormSubmitButton } from "./contact-form-fields";
 import { ContactsIcon } from "@/features/sales-management/components/icons";
-import type { Contact } from "@/types/contact";
-import type { Lead, TeamDirectoryEntry } from "@/types/lead";
+import type { ContactListItem } from "../lib/get-contacts";
+import type { TeamDirectoryEntry } from "@/types/lead";
 
 type EditContactDialogProps = {
-  contact: Contact;
-  leads: Lead[];
+  contact: ContactListItem;
+  /** Already resolved by the caller (ContactList already has this
+   *  contact's linked-lead label on hand from its own bounded
+   *  leadLabels — the same page of contacts this dialog was opened
+   *  from), so this dialog no longer needs the full customer Lead list
+   *  just to derive one string via .find(). */
+  lockedLeadLabel: string;
   assignableUsers: TeamDirectoryEntry[];
   currentUserCustomerUserId: string;
   onClose: () => void;
@@ -31,15 +36,15 @@ type EditContactDialogProps = {
  * WITH CHECK) independently re-verify authorization on every submit,
  * including against whatever owner_id the caller reassigns it to.
  */
-export function EditContactDialog({ contact, leads, assignableUsers, currentUserCustomerUserId, onClose }: EditContactDialogProps) {
+export function EditContactDialog({
+  contact,
+  lockedLeadLabel,
+  assignableUsers,
+  currentUserCustomerUserId,
+  onClose,
+}: EditContactDialogProps) {
   const [state, formAction] = useActionState(updateContactAction, initialContactFormState);
   const fieldErrors = state.fieldErrors ?? {};
-
-  const lockedLeadLabel = useMemo(() => {
-    const lead = leads.find((candidate) => candidate.id === contact.lead_id);
-    if (!lead) return "";
-    return lead.company ? `${lead.company} — ${lead.contact_name}` : lead.contact_name;
-  }, [leads, contact.lead_id]);
 
   // Closing this dialog means calling the PARENT's (ContactList's)
   // setEditingContact(null) — a different component's state, so this
@@ -66,7 +71,6 @@ export function EditContactDialog({ contact, leads, assignableUsers, currentUser
         <input type="hidden" name="id" value={contact.id} />
 
         <ContactFormFields
-          leads={leads}
           assignableUsers={assignableUsers}
           currentUserCustomerUserId={currentUserCustomerUserId}
           fieldErrors={fieldErrors}

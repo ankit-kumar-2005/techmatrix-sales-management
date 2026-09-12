@@ -1,15 +1,15 @@
 "use client";
 
 import { Modal } from "@/components/shared/modal";
+import { formatLeadLabel, type LeadLabel } from "@/features/leads/lib/get-lead-labels";
 import { dateFormatter } from "@/utils/format";
-import type { Task } from "@/types/task";
-import type { Lead } from "@/types/lead";
+import type { TaskListItem } from "../lib/get-tasks";
 
 type OwnerDisplay = { label: string; initials: string; tooltip: string };
 
 type TaskDetailModalProps = {
-  task: Task;
-  lead?: Lead;
+  task: TaskListItem;
+  lead?: LeadLabel;
   assignee?: OwnerDisplay;
   onComplete: () => void;
   onClose: () => void;
@@ -88,9 +88,7 @@ export function TaskDetailModal({ task, lead, assignee, onComplete, onClose }: T
 
         <div>
           <p className="text-xs font-semibold tracking-wide text-neutral-500 uppercase">Lead</p>
-          <p className="mt-1 text-sm text-neutral-700">
-            {lead ? (lead.company ? `${lead.company} — ${lead.contact_name}` : lead.contact_name) : "—"}
-          </p>
+          <p className="mt-1 text-sm text-neutral-700">{lead ? formatLeadLabel(lead) : "—"}</p>
         </div>
 
         <div>

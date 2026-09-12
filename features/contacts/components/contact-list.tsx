@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { getContactsPageAction } from "../actions";
 import { EditContactDialog } from "./edit-contact-dialog";
 import { LeadSearchSelect } from "@/features/leads/components/lead-search-select";
+import { formatLeadLabel, type LeadLabel } from "@/features/leads/lib/get-lead-labels";
 import {
   getOwnerAvatarColor,
   getOwnerDisplayLabels,
@@ -18,9 +19,8 @@ import {
   SearchIcon,
   TagIcon,
 } from "@/features/sales-management/components/icons";
-import type { ContactsPage } from "../lib/get-contacts";
-import type { Contact } from "@/types/contact";
-import type { Lead, TeamDirectoryEntry } from "@/types/lead";
+import type { ContactsPage, ContactListItem } from "../lib/get-contacts";
+import type { TeamDirectoryEntry } from "@/types/lead";
 
 // Same three choices and same default as the Pipeline List View's own
 // "Rows per page" selector (pipeline-view.tsx) and Tasks' identical
@@ -33,13 +33,8 @@ const SEARCH_DEBOUNCE_MS = 300;
 
 type OwnerDisplay = { label: string; initials: string; tooltip: string };
 
-// Same label shape LeadSearchSelect's own (unexported) leadLabel() and
-// EditContactDialog's lockedLeadLabel already use — not worth exporting
-// a shared helper for a one-line "company — contact_name" fallback that
-// several places independently derive from the same Lead shape.
-function resolveLeadLabel(lead: Lead | undefined): string | undefined {
-  if (!lead) return undefined;
-  return lead.company ? `${lead.company} — ${lead.contact_name}` : lead.contact_name;
+function resolveLeadLabel(lead: LeadLabel | undefined): string | undefined {
+  return lead ? formatLeadLabel(lead) : undefined;
 }
 
 type ContactListProps = {
@@ -61,9 +56,6 @@ type ContactListProps = {
    *  same source and pattern TaskList already uses for task assignees;
    *  also the Owner picker inside EditContactDialog. */
   assignableUsers: TeamDirectoryEntry[];
-  /** Every Lead the caller can currently see — needed by EditContactDialog
-   *  to resolve/display the contact's own (immutable) linked lead. */
-  leads: Lead[];
   currentUserCustomerUserId: string;
 };
 
@@ -83,7 +75,6 @@ export function ContactList({
   initialLeadId,
   refreshToken,
   assignableUsers,
-  leads,
   currentUserCustomerUserId,
 }: ContactListProps) {
   const [searchInput, setSearchInput] = useState(initialSearch);
@@ -93,14 +84,16 @@ export function ContactList({
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [contacts, setContacts] = useState(initialPage.contacts);
   const [totalCount, setTotalCount] = useState(initialPage.totalCount);
+  const [leadLabels, setLeadLabels] = useState(initialPage.leadLabels);
   const [isLoading, setIsLoading] = useState(false);
-  const [editingContact, setEditingContact] = useState<Contact | null>(null);
+  const [editingContact, setEditingContact] = useState<ContactListItem | null>(null);
 
-  // Every Lead the caller can currently see, keyed by id — resolves each
-  // listed contact's (immutable) lead_id into its display label. The
-  // SAME already-RLS-scoped `leads` array EditContactDialog and the Lead
-  // filter below both already use — not a second Lead fetch.
-  const leadsById = useMemo(() => new Map(leads.map((lead) => [lead.id, lead])), [leads]);
+  // Labels for exactly the Leads the CURRENT page of contacts links to
+  // (bounded, arrives paired with each fetch — see getContactsPage's own
+  // comment) — replaced wholesale on every fetch, never merged across
+  // pages, since it only ever needs to cover contacts actually on screen
+  // right now.
+  const leadLabelById = useMemo(() => new Map(leadLabels.map((lead) => [lead.id, lead])), [leadLabels]);
   // A second, LOCAL refresh signal alongside the `refreshToken` prop —
   // that prop is owned by ContactsPageClient and only bumped by the
   // page-header "New contact" dialog (see its own comment); editing an
@@ -172,6 +165,7 @@ export function ContactList({
       if (cancelled) return;
       setContacts(result.contacts);
       setTotalCount(result.totalCount);
+      setLeadLabels(result.leadLabels);
       setIsLoading(false);
     });
 
@@ -209,17 +203,14 @@ export function ContactList({
         </div>
 
         {/* Controlled mode (value/onChange, no `name`) — see
-            LeadSearchSelect's own comment. Only Leads the caller can
-            already see (the same RLS-scoped `leads` array
-            EditContactDialog/NewContactDialog use) ever appear here, so
-            a cross-tenant Lead can never be selected; the server query
-            re-scopes to customer_id and RLS regardless even if it could. */}
+            LeadSearchSelect's own comment. Its own search is server-side
+            and customer-scoped (searchLeadsAction), so a cross-tenant
+            Lead can never even be offered here, let alone selected. */}
         <div className="w-full sm:w-72">
           <LeadSearchSelect
             id="contact-lead-filter"
             label="Lead"
             hideLabel
-            leads={leads}
             value={leadFilter}
             onChange={setLeadFilter}
             placeholder="All leads — search by name, company, email, or phone..."
@@ -241,7 +232,7 @@ export function ContactList({
                 key={contact.id}
                 contact={contact}
                 owner={ownerDisplayById.get(contact.owner_id)}
-                leadLabel={resolveLeadLabel(leadsById.get(contact.lead_id))}
+                leadLabel={resolveLeadLabel(leadLabelById.get(contact.lead_id))}
                 onEdit={() => setEditingContact(contact)}
               />
             ))
@@ -323,7 +314,7 @@ export function ContactList({
       {editingContact ? (
         <EditContactDialog
           contact={editingContact}
-          leads={leads}
+          lockedLeadLabel={resolveLeadLabel(leadLabelById.get(editingContact.lead_id)) ?? ""}
           assignableUsers={assignableUsers}
           currentUserCustomerUserId={currentUserCustomerUserId}
           onClose={() => {
@@ -342,14 +333,12 @@ function ContactRow({
   leadLabel,
   onEdit,
 }: {
-  contact: Contact;
+  contact: ContactListItem;
   owner?: OwnerDisplay;
-  /** Resolved from the caller's own already-RLS-scoped `leads` array
-   *  (see ContactList's leadsById) — undefined only in the edge case
-   *  where the linked lead somehow isn't in that array (not expected in
-   *  practice, since the same array is what the Lead filter/forms use),
-   *  in which case the badge below simply doesn't render rather than
-   *  showing a blank one. */
+  /** Resolved from ContactList's own bounded leadLabels for the current
+   *  page (see its own comment) — undefined only in the edge case where
+   *  the linked lead somehow isn't in that set, in which case the badge
+   *  below simply doesn't render rather than showing a blank one. */
   leadLabel?: string;
   onEdit: () => void;
 }) {

@@ -1,6 +1,11 @@
 import { cache } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { CurrentMembership, CustomerRole } from "@/types/customer";
+import type {
+  CurrentMembership,
+  CurrentMembershipCustomer,
+  CurrentMembershipUser,
+  CustomerRole,
+} from "@/types/customer";
 
 /**
  * Server-side only: verifies the current session via Supabase Auth
@@ -43,19 +48,63 @@ export const getCurrentMembership = cache(async function getCurrentMembership(
   supabase: SupabaseClient,
   userId: string,
 ): Promise<CurrentMembership | null> {
+  // Column projection (Phase 3), traced against every consumer of the
+  // returned `customer`/`membership` objects across the whole app —
+  // notably CompanyInformationForm, which is passed `membership.customer`
+  // directly as a prop and reads name/company_name/email/phone/website/
+  // address/city/state/country (everything on `customers` except status/
+  // created_at/updated_at, confirmed unused anywhere). created_by is kept
+  // even though no consumer reads it directly: isPrimaryAdmin below is
+  // computed from it before this function returns.
+  //
+  // customer_id and role_id are deliberately LEFT IN on customer_users'
+  // own column list, unlike everywhere else this phase trims a filtered-
+  // on/embed-adjacent column — this function gates literally every
+  // protected page in the app, there is no live environment here to
+  // verify PostgREST resolves both embeds purely from the schema's FK
+  // metadata regardless of the parent's own selected columns, and the
+  // possible savings (two uuids) aren't worth that risk. Only user_id is
+  // dropped: it's read by the `.eq("user_id", userId)` filter below, not
+  // by anything in the returned data (a WHERE clause doesn't need its own
+  // column in the SELECT list to filter on it).
+  // A single string literal, not built via concatenation — the
+  // supabase-js client parses this exact literal's surface syntax at the
+  // TYPE level (to infer what `data` looks like, including through the
+  // two embeds below); a computed/concatenated string can't be parsed
+  // that way and silently degrades to an untyped `GenericStringError`
+  // result instead, which is what broke here the first time.
   const { data, error } = await supabase
     .from("customer_users")
-    .select("*, customer:customers(*), role:roles(name)")
+    .select(
+      "id, customer_id, role_id, name, manager_id, status, created_at, updated_at, customer:customers(id, name, company_name, email, phone, website, address, city, state, country, created_by), role:roles(name)",
+    )
     .eq("user_id", userId)
     .eq("status", "Active")
     .limit(1)
     .maybeSingle();
 
-  if (error || !data || !data.customer || !data.role) {
+  if (error || !data) {
     return null;
   }
 
-  const { customer, role, ...membership } = data;
+  // This project has no generated Database types, so the client can't
+  // know `customer`/`role` are to-one embeds (a unique FK relationship)
+  // rather than to-many — it defaults to modeling both as arrays once
+  // the select string names explicit columns (a plain `*` embed doesn't
+  // trigger this). Cast once to the real, known single-row shape here —
+  // the same "cast to the known real shape" convention every other query
+  // in this app already uses for Supabase's own loose typing (e.g.
+  // `return data as ContactListItem[]`), not a new pattern.
+  const row = data as unknown as CurrentMembershipUser & {
+    customer: CurrentMembershipCustomer;
+    role: { name: string };
+  };
+
+  if (!row.customer || !row.role) {
+    return null;
+  }
+
+  const { customer, role, ...membership } = row;
 
   return {
     customer,

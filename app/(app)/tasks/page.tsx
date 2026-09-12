@@ -2,7 +2,6 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getAuthenticatedUser, getCurrentMembership } from "@/features/customers/lib/get-current-membership";
 import { getTasksBucketPage, type TaskDueBucket, type TasksBucketPage } from "@/features/tasks/lib/get-tasks";
-import { getLeadsForCustomer } from "@/features/leads/lib/get-leads";
 import { getVisibleTeamDirectory } from "@/features/leads/lib/get-team-directory";
 import { TasksPageClient } from "@/features/tasks/components/tasks-page-client";
 import { TASK_TYPES, TASK_STATUSES, TASK_PRIORITIES } from "@/types/task";
@@ -66,6 +65,11 @@ type TasksPageProps = {
  * every subsequent client-driven fetch (see its own comment), so a
  * server/browser timezone mismatch can only ever affect the very first
  * paint, self-correcting the moment the client takes over.
+ *
+ * No longer fetches the customer's whole Lead list up front — the Lead
+ * picker/filter searches server-side itself (LeadSearchSelect →
+ * searchLeadsAction), and each bucket's own getTasksBucketPage result
+ * already carries `leadLabels` bounded to just that bucket page's tasks.
  */
 export default async function TasksPage({ searchParams }: TasksPageProps) {
   const supabase = await createClient();
@@ -114,11 +118,10 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
 
   const bucketsToFetch = initialDueBucket ? [initialDueBucket] : ALL_BUCKETS;
 
-  const [bucketResults, leads, assignableUsers] = await Promise.all([
+  const [bucketResults, assignableUsers] = await Promise.all([
     Promise.all(
       bucketsToFetch.map((bucket) => getTasksBucketPage(supabase, membership.customer.id, { ...baseParams, bucket })),
     ),
-    getLeadsForCustomer(supabase, membership.customer.id),
     getVisibleTeamDirectory(supabase),
   ]);
 
@@ -138,7 +141,6 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
       initialStatus={initialStatus}
       initialDueBucket={initialDueBucket}
       initialLeadId={initialLeadId}
-      leads={leads}
       assignableUsers={assignableUsers}
       currentUserCustomerUserId={membership.membership.id}
     />

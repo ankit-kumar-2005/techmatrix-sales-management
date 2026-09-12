@@ -3,10 +3,10 @@
 import { useState, useTransition } from "react";
 import { MoreVerticalIcon, PauseCircleIcon, PencilIcon, RefreshIcon } from "@/features/sales-management/components/icons";
 import { setCatalogItemStatusAction } from "../actions";
-import type { CatalogItem } from "@/types/catalog";
+import type { CatalogItemListItem } from "../lib/get-catalog-items";
 
 type CatalogItemActionsMenuProps = {
-  item: CatalogItem;
+  item: CatalogItemListItem;
   /** Opens EditCatalogItemDialog — passed straight through from
    *  CatalogItemCard, which supplies this menu as that dialog's
    *  renderTrigger. Selecting "Edit" closes this menu and calls it;

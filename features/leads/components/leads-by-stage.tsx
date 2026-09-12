@@ -1,8 +1,9 @@
-import type { CustomerLeadStage, Lead } from "@/types/lead";
+import type { CustomerLeadStage } from "@/types/lead";
+import type { PipelineLead } from "../lib/get-leads";
 import { stageDotClass } from "../lib/stage-colors";
 
 type LeadsByStageProps = {
-  leads: Lead[];
+  leads: PipelineLead[];
   /** All of the customer's stages (active and inactive), already
    *  ordered by display_order — the same order the Create Lead
    *  dropdown, stage filter, and Pipeline Board columns use, so this

@@ -8,17 +8,19 @@ import { TasksIcon } from "@/features/sales-management/components/icons";
 import { createTaskAction } from "../actions";
 import { initialTaskFormState } from "../form-state";
 import { TaskFormFields, TaskFormSubmitButton } from "./task-form-fields";
-import type { Lead, TeamDirectoryEntry } from "@/types/lead";
+import type { TeamDirectoryEntry } from "@/types/lead";
 
 type AddTaskDialogProps = {
-  leads: Lead[];
   assignableUsers: TeamDirectoryEntry[];
   currentUserCustomerUserId: string;
   /** Preselects the Lead field — set when this dialog is opened from a
    *  Lead's own "Add Task" action (see EditLeadDialog, and the List
    *  view's own Activity icon) rather than from the Tasks page's own
-   *  toolbar. */
-  defaultLeadId?: string;
+   *  toolbar. The caller already has the one Lead object this applies
+   *  to, so it passes the id + an already-formatted label directly —
+   *  no need to thread the full customer Lead list through here just
+   *  for this one preselect. */
+  defaultLead?: { id: string; label: string };
   /** Defaults to "New task" (the Tasks page's own toolbar trigger). A
    *  caller opening this for a specific, already-known Lead (Edit Lead's
    *  "Add Task", the List view's Activity icon) passes something more
@@ -50,10 +52,9 @@ type AddTaskDialogProps = {
  * it's self-owned, not a caller's).
  */
 export function AddTaskDialog({
-  leads,
   assignableUsers,
   currentUserCustomerUserId,
-  defaultLeadId,
+  defaultLead,
   title = "New task",
   renderTrigger,
   onSuccess,
@@ -119,11 +120,10 @@ export function AddTaskDialog({
         >
           <form action={formAction} className="flex flex-col gap-5">
             <TaskFormFields
-              leads={leads}
               assignableUsers={assignableUsers}
               currentUserCustomerUserId={currentUserCustomerUserId}
               fieldErrors={fieldErrors}
-              defaultLeadId={defaultLeadId}
+              defaultLead={defaultLead}
             />
 
             {state.formError ? <MessageBanner tone="error">{state.formError}</MessageBanner> : null}

@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { getLeadLabelsByIds, type LeadLabel } from "@/features/leads/lib/get-lead-labels";
 import type { Task } from "@/types/task";
 
 /**
@@ -73,13 +74,31 @@ export type TasksBucketPageParams = {
   pageSize: number;
 };
 
+/** What TaskRow/TaskDetailModal/EditTaskDialog actually read off a
+ *  listed task — traced consumer by consumer (Phase 3 column
+ *  projection): the row itself (subject, priority, due_date,
+ *  assigned_to, type, status), the detail modal's own extra "Created
+ *  At" line (created_at), the Lead badge (lead_id), and `id` for all of
+ *  the above. customer_id (filtered on, never displayed), created_by,
+ *  and updated_at are confirmed unused by any consumer and dropped from
+ *  the query's own select list below. */
+export type TaskListItem = Pick<
+  Task,
+  "id" | "lead_id" | "subject" | "description" | "priority" | "due_date" | "assigned_to" | "type" | "status" | "created_at"
+>;
+
 export type TasksBucketPage = {
-  tasks: Task[];
+  tasks: TaskListItem[];
   /** Total rows matching this bucket + the current status/search/owner/
    *  type filter (not just this page) — from the same
    *  `{ count: "exact" }` request as the row fetch, what each bucket's
    *  header count and Previous/Next disabled states are computed from. */
   totalCount: number;
+  /** Labels for exactly the Leads THIS bucket page's tasks link to
+   *  (never the customer's whole Lead table) — what TaskRow's badge,
+   *  TaskDetailModal, and EditTaskDialog's locked-lead field resolve
+   *  `lead_id` into. Bounded to at most `pageSize` distinct ids. */
+  leadLabels: LeadLabel[];
 };
 
 // PostgREST's `.or(...)` takes a small filter-expression DSL as a plain
@@ -122,7 +141,12 @@ export async function getTasksBucketPage(
   const from = page * pageSize;
   const to = from + pageSize - 1;
 
-  let query = supabase.from("tasks").select("*", { count: "exact" }).eq("customer_id", customerId);
+  let query = supabase
+    .from("tasks")
+    .select("id, lead_id, subject, description, priority, due_date, assigned_to, type, status, created_at", {
+      count: "exact",
+    })
+    .eq("customer_id", customerId);
 
   if (bucket === "overdue") {
     query = query.lt("due_date", todayStr);
@@ -190,8 +214,17 @@ export async function getTasksBucketPage(
   }
 
   if (error || !data) {
-    return { tasks: [], totalCount: 0 };
+    return { tasks: [], totalCount: 0, leadLabels: [] };
   }
 
-  return { tasks: data as Task[], totalCount: count ?? 0 };
+  const tasks = data as TaskListItem[];
+  // Bounded to THIS bucket page's own tasks (≤ pageSize distinct ids) —
+  // never the customer's whole Lead table. Depends on `tasks` above, so
+  // it's necessarily sequential after the main query — each bucket
+  // already runs as its own independent call (see this function's own
+  // callers), so this doesn't serialize anything that would otherwise
+  // have run in parallel.
+  const leadLabels = await getLeadLabelsByIds(supabase, customerId, tasks.map((task) => task.lead_id));
+
+  return { tasks, totalCount: count ?? 0, leadLabels };
 }

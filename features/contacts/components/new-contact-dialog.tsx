@@ -7,10 +7,9 @@ import { ContactsIcon } from "@/features/sales-management/components/icons";
 import { createContactAction } from "../actions";
 import { initialContactFormState } from "../form-state";
 import { ContactFormFields, ContactFormSubmitButton } from "./contact-form-fields";
-import type { Lead, TeamDirectoryEntry } from "@/types/lead";
+import type { TeamDirectoryEntry } from "@/types/lead";
 
 type NewContactDialogProps = {
-  leads: Lead[];
   assignableUsers: TeamDirectoryEntry[];
   currentUserCustomerUserId: string;
   renderTrigger: (open: () => void) => ReactNode;
@@ -30,7 +29,6 @@ type NewContactDialogProps = {
  * identical render-time close pattern.
  */
 export function NewContactDialog({
-  leads,
   assignableUsers,
   currentUserCustomerUserId,
   renderTrigger,
@@ -91,7 +89,6 @@ export function NewContactDialog({
         >
           <form action={formAction} className="flex flex-col gap-5">
             <ContactFormFields
-              leads={leads}
               assignableUsers={assignableUsers}
               currentUserCustomerUserId={currentUserCustomerUserId}
               fieldErrors={fieldErrors}
