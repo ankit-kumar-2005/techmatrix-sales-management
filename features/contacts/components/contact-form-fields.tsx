@@ -79,7 +79,7 @@ export function ContactFormFields({
 
   return (
     <>
-      <FormSection icon={<ContactsIcon className="h-3.5 w-3.5" />} title="Contact details">
+      <FormSection icon={<ContactsIcon className="h-3.5 w-3.5" />} title="Contact Details">
         <FormField
           label="Name"
           name="name"
@@ -141,7 +141,7 @@ export function ContactFormFields({
         />
       </FormSection>
 
-      <FormSection icon={<LeadCaptureIcon className="h-3.5 w-3.5" />} title="Linked lead">
+      <FormSection icon={<LeadCaptureIcon className="h-3.5 w-3.5" />} title="Linked Lead">
         {defaultValues ? (
           // Read-only in edit mode — lead_id is immutable after creation
           // (see this component's own defaultValues comment), so there's

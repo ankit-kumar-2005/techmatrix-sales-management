@@ -44,7 +44,7 @@ type CatalogItemFormFieldsProps = {
 export function CatalogItemFormFields({ fieldErrors, defaultValues }: CatalogItemFormFieldsProps) {
   return (
     <>
-      <FormSection icon={<TagIcon className="h-3.5 w-3.5" />} title="Basic details" accent="teal">
+      <FormSection icon={<TagIcon className="h-3.5 w-3.5" />} title="Basic Details" accent="teal">
         <FormField
           label="Name"
           name="name"
@@ -101,7 +101,7 @@ export function CatalogItemFormFields({ fieldErrors, defaultValues }: CatalogIte
             error={fieldErrors.price}
           />
           <SelectField
-            label="Pricing unit"
+            label="Pricing Unit"
             id="catalog-item-pricing-unit"
             name="pricing_unit"
             required

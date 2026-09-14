@@ -58,7 +58,7 @@ export function EditContactDialog({
 
   return (
     <Modal
-      title="Edit contact"
+      title="Edit Contact"
       subtitle="Update this contact's details."
       icon={
         <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-sky-50 to-blue-50 text-sky-600 ring-1 ring-sky-100">
@@ -96,7 +96,7 @@ export function EditContactDialog({
           >
             Cancel
           </button>
-          <ContactFormSubmitButton idleLabel="Save changes" pendingLabel="Saving..." />
+          <ContactFormSubmitButton idleLabel="Save Changes" pendingLabel="Saving..." />
         </div>
       </form>
     </Modal>

@@ -8,7 +8,7 @@ import { ContactsPageClient } from "@/features/contacts/components/contacts-page
 const INITIAL_PAGE_SIZE = 10;
 
 type ContactsPageProps = {
-  searchParams: Promise<{ q?: string; lead?: string }>;
+  searchParams: Promise<{ q?: string }>;
 };
 
 /**
@@ -19,13 +19,15 @@ type ContactsPageProps = {
  *
  * Fetches page 1 of the Contacts list (already filtered by whatever
  * search the URL's own searchParams carry — see ContactList's own
- * comment for why). The Lead picker/filter and the Lead badge on each
- * contact row no longer need this page to fetch the customer's whole
- * Lead list up front — LeadSearchSelect searches server-side itself
- * (searchLeadsAction), and getContactsPage's own `leadLabels` already
- * comes back bounded to just this page's contacts. Everything below this
- * is Client Component interaction (search/pagination/dismissal), never
- * requiring a browser refresh to update.
+ * comment for why). There is no separate Lead filter/picker any more —
+ * the single search box matches contact/company fields and the linked
+ * Lead's own name/company all at once (see getContactsPage's own
+ * comment) — so this page no longer needs to fetch the customer's whole
+ * Lead list up front for one either way. The Lead badge on each contact
+ * row still resolves from getContactsPage's own `leadLabels`, bounded to
+ * just this page's contacts, unaffected by the search change. Everything
+ * below this is Client Component interaction (search/pagination/
+ * dismissal), never requiring a browser refresh to update.
  *
  * The possible-duplicates panel (a bounded, customer-scoped candidate
  * fetch run through Fuse.js, already filtered against
@@ -52,19 +54,10 @@ export default async function ContactsPage({ searchParams }: ContactsPageProps) 
 
   const params = await searchParams;
   const initialSearch = params.q ?? "";
-  // Not validated against the fetched `leads` array here (that would
-  // mean awaiting getLeadsForCustomer before this query could even
-  // start) — an invalid or cross-tenant id simply matches zero rows
-  // (the query is already scoped to `customer_id`, and RLS's own
-  // "hierarchy-aware contact visibility" policy is the real boundary
-  // regardless), so there's no security reason to pre-check it and a
-  // real performance reason not to serialize these two fetches.
-  const initialLeadId = params.lead ?? "";
 
   const [initialPage, assignableUsers] = await Promise.all([
     getContactsPage(supabase, membership.customer.id, {
       search: initialSearch,
-      leadId: initialLeadId,
       page: 0,
       pageSize: INITIAL_PAGE_SIZE,
     }),
@@ -75,7 +68,6 @@ export default async function ContactsPage({ searchParams }: ContactsPageProps) 
     <ContactsPageClient
       initialPage={initialPage}
       initialSearch={initialSearch}
-      initialLeadId={initialLeadId}
       assignableUsers={assignableUsers}
       currentUserCustomerUserId={membership.membership.id}
       // Possible-duplicates panel intentionally disabled for now (soft

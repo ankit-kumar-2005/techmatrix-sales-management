@@ -46,7 +46,7 @@ export function TaskDetailModal({ task, lead, assignee, onComplete, onClose }: T
   }
 
   return (
-    <Modal title="Task details" onClose={onClose}>
+    <Modal title="Task Details" onClose={onClose}>
       <div className="flex flex-col gap-4">
         <div>
           <p className="text-xs font-semibold tracking-wide text-neutral-500 uppercase">Subject</p>

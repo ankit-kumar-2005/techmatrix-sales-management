@@ -124,7 +124,7 @@ export function LeadFormFields({ stages, owners, role, currentUserEmail, fieldEr
 
   return (
     <>
-      <FormSection icon={<LeadCaptureIcon className="h-3.5 w-3.5" />} title="Lead details">
+      <FormSection icon={<LeadCaptureIcon className="h-3.5 w-3.5" />} title="Lead Details">
         <FormField
           label=" Name"
           name="contact_name"
@@ -185,7 +185,7 @@ export function LeadFormFields({ stages, owners, role, currentUserEmail, fieldEr
         />
       </FormSection>
 
-      <FormSection icon={<TrendingUpIcon className="h-3.5 w-3.5" />} title="Deal info">
+      <FormSection icon={<TrendingUpIcon className="h-3.5 w-3.5" />} title="Deal Info">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <FormField
             label="Company"

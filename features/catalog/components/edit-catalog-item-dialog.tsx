@@ -79,7 +79,7 @@ export function EditCatalogItemDialog({ item, onSuccess, renderTrigger }: EditCa
 
       {isOpen ? (
         <Modal
-          title="Edit catalog item"
+          title="Edit Catalog Item"
           subtitle={`Update ${item.name}'s details.`}
           icon={
             <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-teal-50 to-teal-100 text-teal-700 ring-1 ring-teal-100">
@@ -112,7 +112,7 @@ export function EditCatalogItemDialog({ item, onSuccess, renderTrigger }: EditCa
               >
                 Cancel
               </button>
-              <CatalogItemFormSubmitButton idleLabel="Save changes" pendingLabel="Saving..." />
+              <CatalogItemFormSubmitButton idleLabel="Save Changes" pendingLabel="Saving..." />
             </div>
           </form>
         </Modal>

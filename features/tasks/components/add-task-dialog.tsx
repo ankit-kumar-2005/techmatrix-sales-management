@@ -55,7 +55,7 @@ export function AddTaskDialog({
   assignableUsers,
   currentUserCustomerUserId,
   defaultLead,
-  title = "New task",
+  title = "New Task",
   renderTrigger,
   onSuccess,
 }: AddTaskDialogProps) {
@@ -136,7 +136,7 @@ export function AddTaskDialog({
               >
                 Cancel
               </button>
-              <TaskFormSubmitButton idleLabel="Add task" pendingLabel="Adding..." />
+              <TaskFormSubmitButton idleLabel="Add Task" pendingLabel="Adding..." />
             </div>
           </form>
         </Modal>

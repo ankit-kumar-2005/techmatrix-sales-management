@@ -17,13 +17,15 @@ export type ContactListItem = Pick<
 >;
 
 export type ContactsPageParams = {
-  /** Matches against name, company, email, phone, or title — "" means no
-   *  search filter. */
+  /** A single unified search — matches if the term appears in the
+   *  contact's own name, company, email, phone, or title, OR in the
+   *  linked lead's own contact_name/company (see getContactsPage's own
+   *  comment for how the latter is resolved). "" means no search
+   *  filter. Replaces the former separate exact-lead-id filter
+   *  entirely — there is no longer a way to filter by a specific lead
+   *  without matching its name/company as text, by design (Contacts
+   *  UI-consolidation request). */
   search: string;
-  /** Exact match against lead_id — "" means every lead. Combines with
-   *  `search` via AND (never OR): "Search=Ravi, Lead=ABC" means Ravi
-   *  contacts belonging to ABC, not either condition alone. */
-  leadId: string;
   page: number;
   pageSize: number;
 };
@@ -52,6 +54,17 @@ function toSafeOrSearchTerm(value: string): string {
   return value.replace(/[,()]/g, " ").trim();
 }
 
+// Bounds how many matching Leads can feed into the search below — not a
+// pagination concern (nothing here is displayed), but the same
+// "don't leave a query structurally unbounded" standard this project
+// holds every list query to (see .claude/skills/performance-and-security-
+// standards). A customer's Lead table is realistically small enough that
+// this is a generous ceiling, not a real limit in practice — ordered by
+// updated_at so, if a search term is ever generic enough to exceed it,
+// the leads that get dropped are the least-recently-active ones, not an
+// arbitrary DB-order cutoff.
+const SEARCH_MATCHED_LEADS_LIMIT = 200;
+
 /**
  * Server-side only: exactly one page of this customer's Contacts matching
  * the given search — a real `.range(from, to)` request against Postgres,
@@ -62,13 +75,31 @@ function toSafeOrSearchTerm(value: string): string {
  * toolbar needs. Shared by the page's own initial (server-rendered) fetch
  * and getContactsPageAction's subsequent client-driven re-fetches, so the
  * two can never drift into two different query shapes.
+ *
+ * SEARCHING THE LINKED LEAD'S NAME/COMPANY: contacts has no column of its
+ * own that holds the linked lead's name — lead_id and owner_id are two
+ * independent relationships (a Contact's own `company` is its own field,
+ * a separate value from its lead's `company`; see the contacts
+ * migration's design notes) — so "does this search term match the linked
+ * lead" can't be a plain `.ilike()` on this table. Resolved as a small,
+ * separate lookup against `leads` (RLS-scoped exactly like any other
+ * query — a caller only ever gets back leads they can already see),
+ * whose matching ids are folded into the SAME `.or()` as this table's own
+ * ilike conditions via `lead_id.in.(...)`. PostgREST can do this in one
+ * round trip via an embedded `leads!inner(...)` join with a cross-table
+ * `.or()`, but that combination is untested against this specific
+ * project (no generated Database types, no live database available while
+ * building this) — the two-query approach here reuses the exact
+ * `.in("id", ...)` pattern already proven in getLeadLabelsByIds, trading
+ * one extra bounded round trip for something already known to work
+ * rather than a novel filter this environment can't verify.
  */
 export async function getContactsPage(
   supabase: SupabaseClient,
   customerId: string,
   params: ContactsPageParams,
 ): Promise<ContactsPage> {
-  const { search, leadId, page, pageSize } = params;
+  const { search, page, pageSize } = params;
   const from = page * pageSize;
   const to = from + pageSize - 1;
 
@@ -77,21 +108,30 @@ export async function getContactsPage(
     .select("id, lead_id, owner_id, name, company, title, email, phone, tags", { count: "exact" })
     .eq("customer_id", customerId);
 
-  if (leadId) {
-    query = query.eq("lead_id", leadId);
-  }
-
   const safeSearch = toSafeOrSearchTerm(search);
   if (safeSearch) {
-    query = query.or(
-      [
-        `name.ilike.%${safeSearch}%`,
-        `company.ilike.%${safeSearch}%`,
-        `email.ilike.%${safeSearch}%`,
-        `phone.ilike.%${safeSearch}%`,
-        `title.ilike.%${safeSearch}%`,
-      ].join(","),
-    );
+    const orConditions = [
+      `name.ilike.%${safeSearch}%`,
+      `company.ilike.%${safeSearch}%`,
+      `email.ilike.%${safeSearch}%`,
+      `phone.ilike.%${safeSearch}%`,
+      `title.ilike.%${safeSearch}%`,
+    ];
+
+    const { data: matchedLeads } = await supabase
+      .from("leads")
+      .select("id")
+      .eq("customer_id", customerId)
+      .or(`contact_name.ilike.%${safeSearch}%,company.ilike.%${safeSearch}%`)
+      .order("updated_at", { ascending: false })
+      .limit(SEARCH_MATCHED_LEADS_LIMIT);
+
+    if (matchedLeads && matchedLeads.length > 0) {
+      const leadIds = matchedLeads.map((lead) => lead.id as string);
+      orConditions.push(`lead_id.in.(${leadIds.join(",")})`);
+    }
+
+    query = query.or(orConditions.join(","));
   }
 
   const { data, error, count } = await query.order("created_at", { ascending: false }).range(from, to);

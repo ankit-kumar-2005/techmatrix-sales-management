@@ -94,7 +94,7 @@ export function TaskFormFields({
 
   return (
     <>
-      <FormSection icon={<TasksIcon className="h-3.5 w-3.5" />} title="Task details">
+      <FormSection icon={<TasksIcon className="h-3.5 w-3.5" />} title="Task Details">
         <FormField
           label="Subject"
           name="subject"

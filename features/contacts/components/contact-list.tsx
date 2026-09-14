@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { getContactsPageAction } from "../actions";
 import { EditContactDialog } from "./edit-contact-dialog";
-import { LeadSearchSelect } from "@/features/leads/components/lead-search-select";
 import { formatLeadLabel, type LeadLabel } from "@/features/leads/lib/get-lead-labels";
 import {
   getOwnerAvatarColor,
@@ -12,6 +11,7 @@ import {
   getOwnerTooltip,
 } from "@/features/leads/lib/owner-display";
 import {
+  BuildingIcon,
   LeadCaptureIcon,
   MailIcon,
   PencilIcon,
@@ -37,13 +37,28 @@ function resolveLeadLabel(lead: LeadLabel | undefined): string | undefined {
   return lead ? formatLeadLabel(lead) : undefined;
 }
 
+/** The contact card's own pill order — "Person Name — Company," the
+ *  reverse of formatLeadLabel's shared "Company — Person Name." Kept
+ *  local to this one call site rather than changing formatLeadLabel
+ *  itself, which is a shared formatting rule used well beyond this
+ *  pill — LeadSearchSelect's own dropdown/locked-value display, this
+ *  same page's EditContactDialog locked-lead field, and Tasks'
+ *  EditTaskDialog/TaskRow/TaskDetailModal. Flipping that shared
+ *  function would have silently reversed the label in every one of
+ *  those places too; only this pill was actually asked for. Still the
+ *  linked LEAD's own contact_name/company (unchanged data source) —
+ *  just reordered. */
+function formatContactPillLeadLabel(lead: LeadLabel): string {
+  return lead.company ? `${lead.contact_name} — ${lead.company}` : lead.contact_name;
+}
+
+function resolvePillLeadLabel(lead: LeadLabel | undefined): string | undefined {
+  return lead ? formatContactPillLeadLabel(lead) : undefined;
+}
+
 type ContactListProps = {
   initialPage: ContactsPage;
   initialSearch: string;
-  /** "" (All leads) or a specific lead_id — read from the URL's own
-   *  searchParams the same way initialSearch is, so a hard refresh (or a
-   *  shared/bookmarked link) lands on the same filtered view. */
-  initialLeadId: string;
   /** Bumped by the page-level "New contact" dialog's onSuccess (owned by
    *  the shared client ancestor, ContactsPageClient, since that button
    *  lives in the page header — top-right, next to the heading, matching
@@ -72,14 +87,12 @@ type ContactListProps = {
 export function ContactList({
   initialPage,
   initialSearch,
-  initialLeadId,
   refreshToken,
   assignableUsers,
   currentUserCustomerUserId,
 }: ContactListProps) {
   const [searchInput, setSearchInput] = useState(initialSearch);
   const [committedSearch, setCommittedSearch] = useState(initialSearch);
-  const [leadFilter, setLeadFilter] = useState(initialLeadId);
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [contacts, setContacts] = useState(initialPage.contacts);
@@ -122,31 +135,26 @@ export function ContactList({
     return () => clearTimeout(timer);
   }, [searchInput]);
 
-  // Mirrors committedSearch and leadFilter into the URL's own
-  // searchParams — a hard refresh (ContactsPage re-reading its own
-  // searchParams) lands on the same filtered view, not a reset to
-  // "no filter" — same pattern and same reasoning as TaskList's
-  // identical effect.
+  // Mirrors committedSearch into the URL's own searchParams — a hard
+  // refresh (ContactsPage re-reading its own searchParams) lands on the
+  // same filtered view, not a reset to "no filter" — same pattern and
+  // same reasoning as TaskList's identical effect.
   useEffect(() => {
     const params = new URLSearchParams();
     if (committedSearch) params.set("q", committedSearch);
-    if (leadFilter) params.set("lead", leadFilter);
     const queryString = params.toString();
     const url = queryString ? `${window.location.pathname}?${queryString}` : window.location.pathname;
     window.history.replaceState(null, "", url);
-  }, [committedSearch, leadFilter]);
+  }, [committedSearch]);
 
-  // Resets to page 1 whenever search, Lead filter, OR page size changes —
-  // "adjust state during render" (this component's own `page` state,
-  // kept in sync with its own committedSearch/leadFilter/pageSize
-  // state), not a useEffect, matching the pattern used throughout this
-  // app for this exact case.
+  // Resets to page 1 whenever search OR page size changes — "adjust
+  // state during render" (this component's own `page` state, kept in
+  // sync with its own committedSearch/pageSize state), not a useEffect,
+  // matching the pattern used throughout this app for this exact case.
   const [syncedSearch, setSyncedSearch] = useState(committedSearch);
-  const [syncedLeadFilter, setSyncedLeadFilter] = useState(leadFilter);
   const [syncedPageSize, setSyncedPageSize] = useState(pageSize);
-  if (committedSearch !== syncedSearch || leadFilter !== syncedLeadFilter || pageSize !== syncedPageSize) {
+  if (committedSearch !== syncedSearch || pageSize !== syncedPageSize) {
     setSyncedSearch(committedSearch);
-    setSyncedLeadFilter(leadFilter);
     setSyncedPageSize(pageSize);
     setPage(0);
   }
@@ -155,13 +163,13 @@ export function ContactList({
   useEffect(() => {
     if (isFirstRun.current) {
       isFirstRun.current = false;
-      return; // the server already fetched this exact search/lead/page — no need to re-fetch it immediately
+      return; // the server already fetched this exact search/page — no need to re-fetch it immediately
     }
 
     let cancelled = false;
     setIsLoading(true);
 
-    getContactsPageAction({ search: committedSearch, leadId: leadFilter, page, pageSize }).then((result) => {
+    getContactsPageAction({ search: committedSearch, page, pageSize }).then((result) => {
       if (cancelled) return;
       setContacts(result.contacts);
       setTotalCount(result.totalCount);
@@ -172,7 +180,7 @@ export function ContactList({
     return () => {
       cancelled = true;
     };
-  }, [committedSearch, leadFilter, page, pageSize, refreshToken, localRefreshToken]);
+  }, [committedSearch, page, pageSize, refreshToken, localRefreshToken]);
 
   const pageCount = Math.max(Math.ceil(totalCount / pageSize), 1);
   const currentPage = Math.min(page, pageCount - 1);
@@ -180,50 +188,34 @@ export function ContactList({
 
   return (
     <div className="flex flex-col gap-4">
-      {/* Search bar + Lead filter read as ONE toolbar row: same height
-          (h-10, matching both LeadSearchSelect's own padding-derived
-          height and the h-10 controls Tasks' own toolbar already uses),
-          same rounded-lg/border/background, aligned on the same top
-          edge. LeadSearchSelect normally renders a visible "Lead" label
-          above its input (the right call in the Contact/Task forms it's
-          also used in) — hideLabel keeps that label in the accessible
-          tree (htmlFor-associated, just visually hidden via sr-only)
-          so it doesn't push this control's input down below the search
-          bar's, which has no label row of its own. */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
-        <div className="group relative w-full sm:min-w-[12rem] sm:flex-1">
-          <SearchIcon className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-neutral-400 transition-colors group-focus-within:text-sky-500" />
-          <input
-            type="text"
-            value={searchInput}
-            onChange={(event) => setSearchInput(event.target.value)}
-            placeholder="Search contacts or companies..."
-            className="h-10 w-full rounded-lg border border-neutral-300 bg-white pl-9 text-sm text-neutral-700 outline-none transition-colors hover:border-neutral-400 focus:border-sky-500 focus:ring-2 focus:ring-sky-500/30"
-          />
-        </div>
-
-        {/* Controlled mode (value/onChange, no `name`) — see
-            LeadSearchSelect's own comment. Its own search is server-side
-            and customer-scoped (searchLeadsAction), so a cross-tenant
-            Lead can never even be offered here, let alone selected. */}
-        <div className="w-full sm:w-72">
-          <LeadSearchSelect
-            id="contact-lead-filter"
-            label="Lead"
-            hideLabel
-            value={leadFilter}
-            onChange={setLeadFilter}
-            placeholder="All leads — search by name, company, email, or phone..."
-          />
-        </div>
+      {/* One merged search box (previously this plus a separate Lead
+          picker/filter) — matches a single term against the contact's
+          own name/company/email/phone/title AND the linked Lead's own
+          name/company, all at once, server-side (see getContactsPage's
+          own comment for how the Lead half is resolved). Two icons at
+          the left (building, then the existing search glyph) rather than
+          one, so the input still visually signals it searches
+          organizational/company data too, not just people — the same
+          pairing the previous two-box layout showed, just inside one
+          input now instead of two. */}
+      <div className="group relative w-full">
+        <BuildingIcon className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-neutral-400 transition-colors group-focus-within:text-sky-500" />
+        <SearchIcon className="pointer-events-none absolute top-1/2 left-8 h-4 w-4 -translate-y-1/2 text-neutral-400 transition-colors group-focus-within:text-sky-500" />
+        <input
+          type="text"
+          value={searchInput}
+          onChange={(event) => setSearchInput(event.target.value)}
+          placeholder="Search by name, lead, or company..."
+          className="h-10 w-full rounded-lg border border-neutral-300 bg-white pl-14 text-sm text-neutral-700 outline-none transition-colors hover:border-neutral-400 focus:border-sky-500 focus:ring-2 focus:ring-sky-500/30"
+        />
       </div>
 
       <div className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-black/5">
         <div className="relative flex flex-col gap-2.5 p-4 sm:p-5">
           {contacts.length === 0 ? (
             <p className="rounded-xl bg-neutral-50 px-4 py-8 text-center text-sm text-neutral-400">
-              {hasSearch || leadFilter
-                ? "No contacts match these filters."
+              {hasSearch
+                ? "No contacts match this search."
                 : "No contacts yet. Add your first contact to get started."}
             </p>
           ) : (
@@ -232,7 +224,7 @@ export function ContactList({
                 key={contact.id}
                 contact={contact}
                 owner={ownerDisplayById.get(contact.owner_id)}
-                leadLabel={resolveLeadLabel(leadLabelById.get(contact.lead_id))}
+                leadLabel={resolvePillLeadLabel(leadLabelById.get(contact.lead_id))}
                 onEdit={() => setEditingContact(contact)}
               />
             ))
@@ -258,7 +250,7 @@ export function ContactList({
             List View's own selector and Tasks' identical one. */}
         <div className="flex flex-col items-center justify-between gap-2 border-t border-neutral-100 px-4 py-3 sm:flex-row sm:px-5">
           <div className="flex items-center gap-2 text-xs text-neutral-500">
-            <label htmlFor="contact-rows-per-page">Rows per page</label>
+            <label htmlFor="contact-rows-per-page">Rows Per Page</label>
             <select
               id="contact-rows-per-page"
               value={pageSize}

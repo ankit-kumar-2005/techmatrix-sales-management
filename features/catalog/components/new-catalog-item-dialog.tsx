@@ -90,10 +90,13 @@ export function NewCatalogItemDialog({ variant = "button", onSuccess }: NewCatal
           aria-label="Add a new catalog item"
           className="flex h-full min-h-[11rem] w-full flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-teal-200 bg-teal-50/30 text-teal-700 transition-all duration-200 hover:-translate-y-0.5 hover:border-teal-400 hover:bg-teal-50 focus-visible:ring-2 focus-visible:ring-teal-500/40 focus-visible:ring-offset-2 focus-visible:outline-none"
         >
-          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-white text-teal-700 ring-1 ring-teal-200">
-            <PlusIcon className="h-5 w-5" />
+          <span className="flex h-14 w-14 items-center justify-center rounded-full bg-sky-100 text-sky-600">
+            <PlusIcon className="h-6 w-6" />
           </span>
-          <span className="text-sm font-semibold">Add item</span>
+          <span className="text-sm font-semibold">Add Item</span>
+          <span className="max-w-[14rem] text-center text-xs font-normal text-neutral-500">
+            Add a product or service to your catalog
+          </span>
         </button>
       ) : (
         // Header trigger — same background/text/radius/hover/shadow/
@@ -110,13 +113,13 @@ export function NewCatalogItemDialog({ variant = "button", onSuccess }: NewCatal
           className="flex min-h-11 items-center gap-2 rounded-full bg-gradient-to-r from-blue-600 to-violet-600 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-blue-600/30 transition-all duration-200 hover:-translate-y-0.5 hover:from-blue-700 hover:to-violet-700 hover:shadow-xl hover:shadow-blue-600/40 focus-visible:ring-2 focus-visible:ring-sky-500/40 focus-visible:ring-offset-2 focus-visible:outline-none"
         >
           <PlusIcon className="h-4 w-4 shrink-0" />
-          Add item
+          Add Item
         </button>
       )}
 
       {isOpen ? (
         <Modal
-          title="New catalog item"
+          title="New Catalog Item"
           subtitle="Add something your team can attach to a proposal."
           icon={
             <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-teal-50 to-teal-100 text-teal-700 ring-1 ring-teal-100">
@@ -138,7 +141,7 @@ export function NewCatalogItemDialog({ variant = "button", onSuccess }: NewCatal
               >
                 Cancel
               </button>
-              <CatalogItemFormSubmitButton idleLabel="Add item" pendingLabel="Adding..." />
+              <CatalogItemFormSubmitButton idleLabel="Add Item" pendingLabel="Adding..." />
             </div>
           </form>
         </Modal>

@@ -148,7 +148,14 @@ export function CatalogItemsGrid({
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-black/5">
+      {/* No overflow-hidden here (unlike before) — neither child section
+          below paints its own distinct background rectangle (both are
+          transparent over this div's own bg-white), so nothing actually
+          depended on it for corner-clipping. Removing it is what lets
+          CatalogItemActionsMenu's dropdown, now anchored inside the last
+          grid row's card footer, render below the grid instead of being
+          clipped at this wrapper's own bottom edge. */}
+      <div className="rounded-2xl bg-white shadow-sm ring-1 ring-black/5">
         <div className="border-b border-neutral-100 p-4 sm:overflow-x-auto sm:p-5">
           <div className="flex flex-col gap-3 sm:flex-row sm:flex-nowrap sm:items-center sm:gap-3">
             <div className="group relative w-full sm:min-w-[10rem] sm:flex-1">
@@ -168,7 +175,7 @@ export function CatalogItemsGrid({
                 onChange={(event) => handleCategoryChange(event.target.value)}
                 className={`${selectControlClass} truncate`}
               >
-                <option value="">All categories</option>
+                <option value="">All Categories</option>
                 {categories.map((value) => (
                   <option key={value} value={value}>
                     {value}
@@ -222,7 +229,7 @@ export function CatalogItemsGrid({
 
       <div className="flex flex-col items-center justify-between gap-3 sm:flex-row">
         <div className="flex items-center gap-2 text-xs text-neutral-500">
-          <label htmlFor="catalog-cards-per-page">Cards per page</label>
+          <label htmlFor="catalog-cards-per-page">Cards Per Page</label>
           <select
             id="catalog-cards-per-page"
             value={pageSize}

@@ -59,7 +59,7 @@ export function EditTaskDialog({
 
   return (
     <Modal
-      title="Edit task"
+      title="Edit Task"
       subtitle="Update this task's details."
       icon={
         <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-sky-50 to-blue-50 text-sky-600 ring-1 ring-sky-100">
@@ -97,7 +97,7 @@ export function EditTaskDialog({
           >
             Cancel
           </button>
-          <TaskFormSubmitButton idleLabel="Save changes" pendingLabel="Saving..." />
+          <TaskFormSubmitButton idleLabel="Save Changes" pendingLabel="Saving..." />
         </div>
       </form>
     </Modal>

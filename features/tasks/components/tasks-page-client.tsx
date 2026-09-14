@@ -16,7 +16,6 @@ type TasksPageClientProps = {
   initialPriority: string;
   initialStatus: string;
   initialDueBucket: TaskDueBucket | "";
-  initialLeadId: string;
   assignableUsers: TeamDirectoryEntry[];
   currentUserCustomerUserId: string;
 };
@@ -58,7 +57,6 @@ export function TasksPageClient({
   initialPriority,
   initialStatus,
   initialDueBucket,
-  initialLeadId,
   assignableUsers,
   currentUserCustomerUserId,
 }: TasksPageClientProps) {
@@ -68,7 +66,7 @@ export function TasksPageClient({
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-neutral-900 sm:text-3xl">Tasks &amp; reminders</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-neutral-900 sm:text-3xl">Tasks &amp; Reminders</h1>
           <span
             aria-hidden="true"
             className="mt-2 block h-1 w-10 rounded-full bg-gradient-to-r from-blue-600 to-violet-600"
@@ -89,7 +87,7 @@ export function TasksPageClient({
               className="flex h-10 w-full shrink-0 items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-blue-600 to-violet-600 px-4 text-sm font-semibold text-white shadow-sm shadow-blue-600/20 transition-all duration-200 hover:from-blue-700 hover:to-violet-700 hover:shadow-md focus-visible:ring-2 focus-visible:ring-sky-500/40 focus-visible:outline-none sm:w-auto"
             >
               <PlusIcon className="h-4 w-4 shrink-0" />
-              Add task
+              Add Task
             </button>
           )}
         />
@@ -104,7 +102,6 @@ export function TasksPageClient({
         initialPriority={initialPriority}
         initialStatus={initialStatus}
         initialDueBucket={initialDueBucket}
-        initialLeadId={initialLeadId}
         assignableUsers={assignableUsers}
         currentUserCustomerUserId={currentUserCustomerUserId}
         refreshToken={refreshToken}

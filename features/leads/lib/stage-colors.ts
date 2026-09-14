@@ -54,6 +54,22 @@ const OPEN_DOT_PALETTE = [
   "bg-indigo-500",
 ];
 
+// Same palette as OPEN_DOT_PALETTE, as border-color utilities instead of
+// background-color ones — for the Pipeline board card's left-border
+// accent (see stageBorderClass below). Kept as its own literal array
+// (not derived from OPEN_DOT_PALETTE by string manipulation) so
+// Tailwind's class scanner can find every one of these exact strings at
+// build time — a computed "bg-*" -> "border-l-*" replacement wouldn't
+// be visible to the scanner and would silently produce no styles.
+const OPEN_BORDER_PALETTE = [
+  "border-l-teal-500",
+  "border-l-blue-500",
+  "border-l-sky-500",
+  "border-l-violet-500",
+  "border-l-amber-500",
+  "border-l-indigo-500",
+];
+
 export function stageBadgeClasses(stage: StageColorInput): string {
   if (stage.is_closed) {
     return isWonStage(stage) ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700";
@@ -66,4 +82,19 @@ export function stageDotClass(stage: StageColorInput): string {
     return isWonStage(stage) ? "bg-emerald-600" : "bg-rose-600";
   }
   return OPEN_DOT_PALETTE[stage.display_order % OPEN_DOT_PALETTE.length];
+}
+
+/** A lead card's left-border accent — same color assigned to that
+ *  lead's current stage everywhere else (the Leads-by-stage bar,
+ *  column-header dot): New = blue, Contacted = sky, Qualified =
+ *  violet, Proposal = amber, Won = emerald, Lost = rose, for the
+ *  default seeded stage set — driven by the same display_order-based
+ *  palette as stageDotClass, not a hardcoded name match, so a
+ *  customer's renamed/reordered/added stages stay correctly colored
+ *  here too. */
+export function stageBorderClass(stage: StageColorInput): string {
+  if (stage.is_closed) {
+    return isWonStage(stage) ? "border-l-emerald-500" : "border-l-rose-500";
+  }
+  return OPEN_BORDER_PALETTE[stage.display_order % OPEN_BORDER_PALETTE.length];
 }

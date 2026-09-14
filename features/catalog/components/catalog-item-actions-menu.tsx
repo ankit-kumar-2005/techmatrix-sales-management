@@ -90,7 +90,7 @@ export function CatalogItemActionsMenu({ item, onEdit, onChanged }: CatalogItemA
         aria-haspopup="menu"
         aria-expanded={isMenuOpen}
         aria-label={`Actions for ${item.name}`}
-        className="flex h-8 w-8 items-center justify-center rounded-lg text-neutral-500 transition-colors hover:bg-neutral-100 hover:text-neutral-900 disabled:cursor-not-allowed disabled:opacity-60"
+        className="flex h-8 w-8 items-center justify-center rounded-full bg-neutral-100 text-neutral-500 transition-colors hover:bg-neutral-200 hover:text-neutral-900 disabled:cursor-not-allowed disabled:opacity-60"
       >
         <MoreVerticalIcon className="h-4 w-4" />
       </button>
@@ -108,10 +108,15 @@ export function CatalogItemActionsMenu({ item, onEdit, onChanged }: CatalogItemA
             onClick={() => setIsMenuOpen(false)}
             className="fixed inset-0 z-10 cursor-default"
           />
+          {/* Opens UPWARD (bottom-full, not top-full) — this trigger now
+              lives in the card's bottom price row, so opening downward
+              would place the whole menu below the card entirely (outside
+              it, overlapping whatever grid row comes next) instead of
+              reading as "belonging" to this card. */}
           <div
             role="menu"
             aria-label={`Actions for ${item.name}`}
-            className="absolute top-full right-0 z-20 mt-1 w-48 rounded-xl bg-white p-1.5 shadow-lg ring-1 ring-black/5"
+            className="absolute right-0 bottom-full z-20 mb-1 w-48 rounded-xl bg-white p-1.5 shadow-lg ring-1 ring-black/5"
           >
             <button
               type="button"

@@ -10,7 +10,6 @@ import type { TeamDirectoryEntry } from "@/types/lead";
 type ContactsPageClientProps = {
   initialPage: ContactsPage;
   initialSearch: string;
-  initialLeadId: string;
   /** The already-Suspense-wrapped <DuplicateContactsPanel /> element,
    *  instantiated by the page (a Server Component) and passed down as an
    *  opaque slot (Phase 7) — this component doesn't fetch duplicate
@@ -42,7 +41,6 @@ type ContactsPageClientProps = {
 export function ContactsPageClient({
   initialPage,
   initialSearch,
-  initialLeadId,
   duplicatesPanel,
   assignableUsers,
   currentUserCustomerUserId,
@@ -74,7 +72,7 @@ export function ContactsPageClient({
               className="flex h-10 w-full shrink-0 items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-blue-600 to-violet-600 px-4 text-sm font-semibold text-white shadow-sm shadow-blue-600/20 transition-all duration-200 hover:from-blue-700 hover:to-violet-700 hover:shadow-md focus-visible:ring-2 focus-visible:ring-sky-500/40 focus-visible:outline-none sm:w-auto"
             >
               <PlusIcon className="h-4 w-4 shrink-0" />
-              New contact
+              New Contact
             </button>
           )}
         />
@@ -85,7 +83,6 @@ export function ContactsPageClient({
       <ContactList
         initialPage={initialPage}
         initialSearch={initialSearch}
-        initialLeadId={initialLeadId}
         refreshToken={refreshToken}
         assignableUsers={assignableUsers}
         currentUserCustomerUserId={currentUserCustomerUserId}

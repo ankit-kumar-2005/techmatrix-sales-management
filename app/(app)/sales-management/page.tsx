@@ -156,7 +156,7 @@ export default async function SalesManagementPage() {
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-neutral-900 sm:text-3xl">Sales pipeline</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-neutral-900 sm:text-3xl">Sales Pipeline</h1>
           <span
             aria-hidden="true"
             className="mt-2 block h-1 w-10 rounded-full bg-gradient-to-r from-blue-600 to-violet-600"

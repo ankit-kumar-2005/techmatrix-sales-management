@@ -65,11 +65,6 @@ export type TasksBucketPageParams = {
    *  Priority=High + Type=Call") depend on it — same shape as the
    *  existing `type` filter immediately below, not a new pattern. */
   priority: string;
-  /** Exact match against lead_id — "" means every lead. The primary
-   *  addition this round: lets a user viewing a Lead find every Task
-   *  tied to it (tasks.lead_id), combining with every other filter here
-   *  via AND, never OR. */
-  leadId: string;
   page: number;
   pageSize: number;
 };
@@ -137,7 +132,7 @@ export async function getTasksBucketPage(
   customerId: string,
   params: TasksBucketPageParams,
 ): Promise<TasksBucketPage> {
-  const { bucket, todayStr, status, search, ownerId, type, priority, leadId, page, pageSize } = params;
+  const { bucket, todayStr, status, search, ownerId, type, priority, page, pageSize } = params;
   const from = page * pageSize;
   const to = from + pageSize - 1;
 
@@ -167,9 +162,6 @@ export async function getTasksBucketPage(
   }
   if (priority) {
     query = query.eq("priority", priority);
-  }
-  if (leadId) {
-    query = query.eq("lead_id", leadId);
   }
 
   const safeSearch = toSafeOrSearchTerm(search);

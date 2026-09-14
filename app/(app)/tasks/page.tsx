@@ -33,7 +33,6 @@ type TasksPageProps = {
     priority?: string;
     status?: string;
     due?: string;
-    lead?: string;
   }>;
 };
 
@@ -66,10 +65,13 @@ type TasksPageProps = {
  * server/browser timezone mismatch can only ever affect the very first
  * paint, self-correcting the moment the client takes over.
  *
- * No longer fetches the customer's whole Lead list up front — the Lead
- * picker/filter searches server-side itself (LeadSearchSelect →
- * searchLeadsAction), and each bucket's own getTasksBucketPage result
- * already carries `leadLabels` bounded to just that bucket page's tasks.
+ * There is no separate Lead filter/picker any more — the single search
+ * box already matches a task's own subject and its linked Lead's own
+ * name/company at once (see getTasksBucketPage's own comment), so this
+ * page never needed to fetch the customer's whole Lead list up front
+ * for one either way. Each bucket's own getTasksBucketPage result still
+ * carries `leadLabels` bounded to just that bucket page's tasks,
+ * unaffected by the search change.
  */
 export default async function TasksPage({ searchParams }: TasksPageProps) {
   const supabase = await createClient();
@@ -93,15 +95,6 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
   const initialPriority = parseEnumParam(params.priority, TASK_PRIORITIES);
   const initialStatus = parseEnumParam(params.status, TASK_STATUSES);
   const initialDueBucket = parseEnumParam(params.due, DUE_BUCKET_VALUES);
-  // Not validated against the fetched `leads` array here (that would mean
-  // awaiting getLeadsForCustomer before this query could even start) — an
-  // invalid or cross-tenant id simply matches zero rows (already scoped
-  // to customer_id, and RLS's own "hierarchy-aware task visibility"
-  // policy is the real boundary regardless), so there's no security
-  // reason to pre-check it and a real performance reason not to
-  // serialize these two fetches — same reasoning ContactsPage's own
-  // identical initialLeadId already uses.
-  const initialLeadId = params.lead ?? "";
 
   const todayStr = toDateOnlyString(new Date());
   const baseParams = {
@@ -111,7 +104,6 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
     type: initialType,
     priority: initialPriority,
     status: initialStatus,
-    leadId: initialLeadId,
     page: 0,
     pageSize: INITIAL_PAGE_SIZE,
   };
@@ -140,7 +132,6 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
       initialPriority={initialPriority}
       initialStatus={initialStatus}
       initialDueBucket={initialDueBucket}
-      initialLeadId={initialLeadId}
       assignableUsers={assignableUsers}
       currentUserCustomerUserId={membership.membership.id}
     />

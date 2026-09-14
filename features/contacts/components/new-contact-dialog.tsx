@@ -78,7 +78,7 @@ export function NewContactDialog({
 
       {isOpen ? (
         <Modal
-          title="New contact"
+          title="New Contact"
           subtitle="Add someone you deal with to your directory."
           icon={
             <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-sky-50 to-blue-50 text-sky-600 ring-1 ring-sky-100">
@@ -104,7 +104,7 @@ export function NewContactDialog({
               >
                 Cancel
               </button>
-              <ContactFormSubmitButton idleLabel="Add contact" pendingLabel="Adding..." />
+              <ContactFormSubmitButton idleLabel="Add Contact" pendingLabel="Adding..." />
             </div>
           </form>
         </Modal>

@@ -48,7 +48,7 @@ import {
 } from "@/features/sales-management/components/icons";
 import { currencyFormatter, dateFormatter } from "@/utils/format";
 import { LEAD_SOURCES } from "../schemas";
-import { stageDotClass } from "../lib/stage-colors";
+import { stageBorderClass, stageDotClass } from "../lib/stage-colors";
 import { getOwnerAvatarColor, getOwnerDisplayLabels, getOwnerInitials, getOwnerTooltip } from "../lib/owner-display";
 import { moveLeadStageAction } from "../actions";
 import type { CustomerLeadStage, TeamDirectoryEntry } from "@/types/lead";
@@ -86,12 +86,12 @@ function canManageLead(lead: PipelineLead, role: CustomerRole, currentUserCustom
 
 /**
  * Shared by ListView's Actions column and the Pipeline board's lead
- * cards. No lead-activity/history feature exists anywhere in this
- * codebase, so with no `onClick` this stays the genuinely disabled
+ * cards — both now wire this to the same AddTaskDialog trigger when the
+ * lead isn't closed (see LeadCardContent's own comment for the board's
+ * side of this). With no `onClick` this stays the genuinely disabled
  * placeholder it always was (same tooltip, same disabled state) — the
- * Pipeline board's own usage never passes one, so it's completely
- * unaffected by the branch below. When `onClick` IS provided (ListView's
- * Actions cell, wired to open the Create Task dialog for that row), the
+ * one remaining caller of that shape is a closed lead, which passes
+ * `locked` instead of an onClick at all. When `onClick` IS provided, the
  * icon becomes a real enabled button instead — same visual treatment,
  * different affordance, because it now does something.
  *
@@ -102,6 +102,14 @@ function canManageLead(lead: PipelineLead, role: CustomerRole, currentUserCustom
  * Pipeline board's card for the same lead, so a locked lead's activity
  * icon reads as "locked" specifically rather than the generic
  * "not available yet" every OTHER disabled case here still shows.
+ *
+ * onPointerDown stops propagation before it ever reaches a draggable
+ * ancestor (the Pipeline board's own card) — belt-and-suspenders, not a
+ * fix for an actual observed conflict: the board's PointerSensor uses a
+ * 250ms activationConstraint.delay, not a distance threshold (see
+ * BoardView's own comment on why), so a normal click already never
+ * holds long enough to activate a drag in the first place. This is a
+ * no-op on ListView, which isn't draggable at all.
  */
 function LeadActivityButton({
   contactName,
@@ -117,6 +125,7 @@ function LeadActivityButton({
       type="button"
       disabled={!onClick}
       onClick={onClick}
+      onPointerDown={(event) => event.stopPropagation()}
       title={locked ? CLOSED_LEAD_TOOLTIP : onClick ? undefined : "Lead activity history is not available yet"}
       aria-label={
         locked ? CLOSED_LEAD_TOOLTIP : onClick ? `Create task for ${contactName}` : `View activity for ${contactName}`
@@ -328,7 +337,7 @@ export function PipelineView({ leads, stages, owners, role, currentUserEmail, cu
                 view === "board" ? "bg-sky-600 text-white shadow-sm" : "text-neutral-500 hover:text-neutral-700"
               }`}
             >
-              Pipeline board
+              Pipeline Board
             </button>
           </div>
 
@@ -349,7 +358,7 @@ export function PipelineView({ leads, stages, owners, role, currentUserEmail, cu
               onChange={(event) => setStageFilter(event.target.value)}
               className={`${selectControlClass} truncate`}
             >
-              <option value="">All stages</option>
+              <option value="">All Stages</option>
               {activeStages.map((stage) => (
                 <option key={stage.id} value={stage.id}>
                   {stage.stage}
@@ -365,7 +374,7 @@ export function PipelineView({ leads, stages, owners, role, currentUserEmail, cu
               onChange={(event) => setOwnerFilter(event.target.value)}
               className={`${selectControlClass} truncate`}
             >
-              <option value="">All owners</option>
+              <option value="">All Owners</option>
               <option value={UNASSIGNED}>Unassigned</option>
               {owners.map((owner) => (
                 <option key={owner.customer_user_id} value={owner.customer_user_id}>
@@ -382,7 +391,7 @@ export function PipelineView({ leads, stages, owners, role, currentUserEmail, cu
               onChange={(event) => setSourceFilter(event.target.value)}
               className={`${selectControlClass} truncate`}
             >
-              <option value="">All sources</option>
+              <option value="">All Sources</option>
               {availableSources.map((source) => (
                 <option key={source} value={source}>
                   {source}
@@ -449,10 +458,12 @@ export function PipelineView({ leads, stages, owners, role, currentUserEmail, cu
           stages={stages.filter(
             (stage) => stage.status === "Active" || filteredLeads.some((lead) => lead.stage_id === stage.id),
           )}
+          owners={owners}
           ownerDisplayById={ownerDisplayById}
           role={role}
           currentUserCustomerUserId={currentUserCustomerUserId}
           onMoveLead={handleMoveLead}
+          onEdit={setEditingLead}
         />
       )}
     </div>
@@ -658,7 +669,7 @@ function ListView({
                   assignableUsers={assignableUsers}
                   currentUserCustomerUserId={currentUserCustomerUserId}
                   defaultLead={{ id: lead.id, label: formatLeadLabel(lead) }}
-                  title={`Create task for ${lead.contact_name}`}
+                  title={`Create Task for ${lead.contact_name}`}
                   renderTrigger={(open) => <LeadActivityButton contactName={lead.contact_name} onClick={open} />}
                 />
               )}
@@ -768,7 +779,7 @@ function ListView({
 
       <div className="flex flex-col items-center justify-between gap-3 border-t border-neutral-100 px-6 py-4 sm:flex-row">
         <div className="flex items-center gap-2 text-xs text-neutral-500">
-          <label htmlFor="lead-rows-per-page">Rows per page</label>
+          <label htmlFor="lead-rows-per-page">Rows Per Page</label>
           <select
             id="lead-rows-per-page"
             value={pagination.pageSize}
@@ -816,6 +827,12 @@ function ListView({
 type BoardViewProps = {
   leads: PipelineLead[];
   stages: CustomerLeadStage[];
+  /** The caller's own hierarchy-visible teammates — passed straight
+   *  through to each card's own AddTaskDialog (see LeadCardContent's own
+   *  comment) as its Assign picker's options, the exact same list/source
+   *  ListView's Actions cell already uses (PipelineView's own `owners`
+   *  prop). */
+  owners: TeamDirectoryEntry[];
   ownerDisplayById: Map<string, OwnerDisplay>;
   role: CustomerRole;
   currentUserCustomerUserId: string;
@@ -824,6 +841,10 @@ type BoardViewProps = {
    *  rollback logic and the actual moveLeadStageAction call (see its own
    *  docstring); this component only owns the drag interaction itself. */
   onMoveLead: (leadId: string, newStageId: string) => void;
+  /** Opens EditLeadDialog for this lead — the exact same handler
+   *  (setEditingLead) ListView's own pencil action already uses, passed
+   *  straight through from PipelineView. Not a second edit flow. */
+  onEdit: (lead: PipelineLead) => void;
 };
 
 /**
@@ -921,7 +942,16 @@ const COLUMN_BOTTOM_MARGIN_PX = 24;
 // bound to a different, momentarily-wrong height that then jumps.
 const FALLBACK_COLUMN_HEIGHT_PX = 544;
 
-function BoardView({ leads, stages, ownerDisplayById, role, currentUserCustomerUserId, onMoveLead }: BoardViewProps) {
+function BoardView({
+  leads,
+  stages,
+  owners,
+  ownerDisplayById,
+  role,
+  currentUserCustomerUserId,
+  onMoveLead,
+  onEdit,
+}: BoardViewProps) {
   const [activeLeadId, setActiveLeadId] = useState<string | null>(null);
   const boardRef = useRef<HTMLDivElement>(null);
   const [columnHeightPx, setColumnHeightPx] = useState(FALLBACK_COLUMN_HEIGHT_PX);
@@ -962,6 +992,7 @@ function BoardView({ leads, stages, ownerDisplayById, role, currentUserCustomerU
 
   const activeLead = activeLeadId ? (leads.find((lead) => lead.id === activeLeadId) ?? null) : null;
   const activeOwner = activeLead?.owner_id ? ownerDisplayById.get(activeLead.owner_id) : undefined;
+  const activeStage = activeLead ? stages.find((stage) => stage.id === activeLead.stage_id) : undefined;
 
   function handleDragStart(event: DragStartEvent) {
     setActiveLeadId(String(event.active.id));
@@ -989,17 +1020,21 @@ function BoardView({ leads, stages, ownerDisplayById, role, currentUserCustomerU
             stage={stage}
             leads={stageLeads}
             total={total}
+            owners={owners}
             ownerDisplayById={ownerDisplayById}
             role={role}
             currentUserCustomerUserId={currentUserCustomerUserId}
             heightPx={columnHeightPx}
+            onEdit={onEdit}
           />
         ))}
       </div>
 
       <DragOverlay>
         {activeLead ? (
-          <div className="w-64 scale-105 cursor-grabbing rounded-xl bg-white p-3.5 shadow-xl ring-1 ring-black/5">
+          <div
+            className={`w-64 scale-105 cursor-grabbing rounded-xl border-l-[3px] bg-white p-3.5 shadow-xl ring-1 ring-black/5 ${activeStage ? stageBorderClass(activeStage) : "border-l-neutral-300"}`}
+          >
             <LeadCardContent lead={activeLead} owner={activeOwner} />
           </div>
         ) : null}
@@ -1012,6 +1047,7 @@ type BoardColumnProps = {
   stage: CustomerLeadStage;
   leads: PipelineLead[];
   total: number;
+  owners: TeamDirectoryEntry[];
   ownerDisplayById: Map<string, OwnerDisplay>;
   role: CustomerRole;
   currentUserCustomerUserId: string;
@@ -1019,6 +1055,7 @@ type BoardColumnProps = {
    *  own comment) and passed to every column identically, so all
    *  columns share one height regardless of how many leads each has. */
   heightPx: number;
+  onEdit: (lead: PipelineLead) => void;
 };
 
 /**
@@ -1063,10 +1100,12 @@ function BoardColumn({
   stage,
   leads,
   total,
+  owners,
   ownerDisplayById,
   role,
   currentUserCustomerUserId,
   heightPx,
+  onEdit,
 }: BoardColumnProps) {
   // Every stage — including a closed one — stays a valid drop target;
   // only whether a card already inside it can be dragged back OUT
@@ -1105,14 +1144,22 @@ function BoardColumn({
         {leads.length === 0 ? (
           <p className="px-1 py-4 text-center text-xs text-neutral-400">No leads at this stage</p>
         ) : (
-          leads.map((lead) => (
-            <DraggableLeadCard
-              key={lead.id}
-              lead={lead}
-              owner={lead.owner_id ? ownerDisplayById.get(lead.owner_id) : undefined}
-              canDrag={canManageLead(lead, role, currentUserCustomerUserId)}
-            />
-          ))
+          leads.map((lead) => {
+            const canManage = canManageLead(lead, role, currentUserCustomerUserId);
+            return (
+              <DraggableLeadCard
+                key={lead.id}
+                lead={lead}
+                stage={stage}
+                owner={lead.owner_id ? ownerDisplayById.get(lead.owner_id) : undefined}
+                owners={owners}
+                currentUserCustomerUserId={currentUserCustomerUserId}
+                canDrag={canManage}
+                canEdit={canManage}
+                onEdit={() => onEdit(lead)}
+              />
+            );
+          })
         )}
       </div>
     </div>
@@ -1121,7 +1168,19 @@ function BoardColumn({
 
 type DraggableLeadCardProps = {
   lead: PipelineLead;
+  /** This lead's own current stage — used only for the card's
+   *  left-border color accent (stageBorderClass), never for drag
+   *  logic. Column membership (which stage a lead is currently
+   *  grouped under) already IS the lead's current stage, so this is
+   *  always accurate immediately after a drag-and-drop move — no
+   *  separate lookup needed. */
+  stage: CustomerLeadStage;
   owner?: OwnerDisplay;
+  /** The caller's own hierarchy-visible teammates — for this card's own
+   *  AddTaskDialog Assign picker (see LeadCardContent's own comment),
+   *  the same list ListView's Actions cell already uses. */
+  owners: TeamDirectoryEntry[];
+  currentUserCustomerUserId: string;
   /** False either because the lead is closed (a real, permanent lock)
    *  or because this user isn't its owner/an admin (the same rule
    *  ListView's Edit action already hides for) — either way, no drag
@@ -1130,6 +1189,15 @@ type DraggableLeadCardProps = {
    *  everywhere else this rule appears: moveLeadStageAction re-checks it
    *  server-side regardless. */
   canDrag: boolean;
+  /** Identical value to canDrag today (both come from the same
+   *  canManageLead check) — kept as its own named prop since it's a
+   *  conceptually different question (can this user edit this lead)
+   *  that just happens to share the same rule as dragging right now. */
+  canEdit: boolean;
+  /** Opens EditLeadDialog for this lead — the exact same action
+   *  ListView's own pencil uses, already bound to this specific lead
+   *  by BoardColumn. */
+  onEdit: () => void;
 };
 
 /**
@@ -1144,7 +1212,16 @@ type DraggableLeadCardProps = {
  * horizontal scrolling instead, so the whole card can safely be the
  * draggable surface again.
  */
-function DraggableLeadCard({ lead, owner, canDrag }: DraggableLeadCardProps) {
+function DraggableLeadCard({
+  lead,
+  stage,
+  owner,
+  owners,
+  currentUserCustomerUserId,
+  canDrag,
+  canEdit,
+  onEdit,
+}: DraggableLeadCardProps) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: lead.id,
     disabled: !canDrag,
@@ -1157,7 +1234,12 @@ function DraggableLeadCard({ lead, owner, canDrag }: DraggableLeadCardProps) {
       {...(canDrag ? listeners : null)}
       aria-label={canDrag ? `Drag ${lead.contact_name} to a different stage` : undefined}
       title={!canDrag && lead.closed_at ? BOARD_LOCKED_CARD_TOOLTIP : undefined}
-      className={`touch-manipulation rounded-xl bg-white p-3.5 shadow-sm ring-1 ring-black/5 transition-all duration-200 focus-visible:ring-2 focus-visible:ring-sky-500/40 focus-visible:outline-none ${
+      // group: lets the pencil button below reveal itself on card
+      // hover/focus (see its own comment). border-l-[3px] + a
+      // stage-colored border class: same left-accent-bar technique the
+      // Catalog/Contacts cards already use elsewhere in this app, not a
+      // new pattern.
+      className={`group touch-manipulation rounded-xl border-l-[3px] bg-white p-3.5 shadow-sm ring-1 ring-black/5 transition-all duration-200 focus-visible:ring-2 focus-visible:ring-sky-500/40 focus-visible:outline-none ${stageBorderClass(stage)} ${
         isDragging
           ? "opacity-40"
           : canDrag
@@ -1165,7 +1247,14 @@ function DraggableLeadCard({ lead, owner, canDrag }: DraggableLeadCardProps) {
             : "cursor-default"
       }`}
     >
-      <LeadCardContent lead={lead} owner={owner} />
+      <LeadCardContent
+        lead={lead}
+        owner={owner}
+        owners={owners}
+        currentUserCustomerUserId={currentUserCustomerUserId}
+        canEdit={canEdit}
+        onEdit={onEdit}
+      />
     </div>
   );
 }
@@ -1173,15 +1262,42 @@ function DraggableLeadCard({ lead, owner, canDrag }: DraggableLeadCardProps) {
 /** The card's visible content, shared between the in-column
  *  DraggableLeadCard and the DragOverlay's floating clone — so the
  *  "lifted" card the user sees following their pointer/focus is exactly
- *  the same content, not a re-derived approximation of it. */
-function LeadCardContent({ lead, owner }: { lead: PipelineLead; owner?: OwnerDisplay }) {
+ *  the same content, not a re-derived approximation of it. canEdit/onEdit
+ *  are optional and simply omitted by the DragOverlay's own clone (a
+ *  non-interactive visual, dragging is already in progress) — no pencil
+ *  renders there, which is fine since nothing on that floating copy is
+ *  meant to be clicked. */
+function LeadCardContent({
+  lead,
+  owner,
+  owners,
+  currentUserCustomerUserId,
+  canEdit,
+  onEdit,
+}: {
+  lead: PipelineLead;
+  owner?: OwnerDisplay;
+  /** owners/currentUserCustomerUserId are what let the Activity icon
+   *  below open a real AddTaskDialog instead of staying the inert
+   *  placeholder it used to be on this board (see the button's own
+   *  comment) — both optional, and both omitted by the DragOverlay's
+   *  own floating clone (a non-interactive visual, no dialog needed
+   *  there), which falls back to the plain disabled button exactly as
+   *  before. */
+  owners?: TeamDirectoryEntry[];
+  currentUserCustomerUserId?: string;
+  canEdit?: boolean;
+  onEdit?: () => void;
+}) {
+  const isClosed = Boolean(lead.closed_at);
+
   return (
     <>
       <p
         className="flex items-center gap-1.5 truncate text-sm font-semibold text-neutral-900"
         title={lead.contact_name}
       >
-        {lead.closed_at ? (
+        {isClosed ? (
           <LockIcon className="h-3 w-3 shrink-0 text-neutral-400" aria-label={BOARD_LOCKED_CARD_TOOLTIP} />
         ) : null}
         {lead.contact_name}
@@ -1209,7 +1325,63 @@ function LeadCardContent({ lead, owner }: { lead: PipelineLead; owner?: OwnerDis
             )}
           </span>
         </span>
-        <LeadActivityButton contactName={lead.contact_name} locked={Boolean(lead.closed_at)} />
+        <span className="flex items-center gap-1.5">
+          {/* Now actually wired, the same way ListView's Actions cell
+              already wires this exact icon: an AddTaskDialog trigger
+              when the lead is open and owners/currentUserCustomerUserId
+              are available (always true for the in-column card; the
+              DragOverlay's own clone omits both and gets the plain
+              disabled button instead, unaffected). A closed lead keeps
+              the previous locked/disabled treatment verbatim — nothing
+              changed for that case. Root cause of "the clock icon does
+              nothing" was this: the board's own call to
+              LeadActivityButton never passed an onClick at all, so it
+              was permanently stuck in its own genuinely-disabled
+              placeholder branch — not a drag-and-drop event-interception
+              bug (this board's PointerSensor uses a 250ms delay
+              activationConstraint, not a distance threshold, which is
+              exactly what already prevents a plain click from ever being
+              misread as a drag start — see BoardView's own comment). */}
+          {!isClosed && owners && currentUserCustomerUserId !== undefined ? (
+            <AddTaskDialog
+              assignableUsers={owners}
+              currentUserCustomerUserId={currentUserCustomerUserId}
+              defaultLead={{ id: lead.id, label: formatLeadLabel(lead) }}
+              title={`Create Task for ${lead.contact_name}`}
+              renderTrigger={(open) => <LeadActivityButton contactName={lead.contact_name} onClick={open} />}
+            />
+          ) : (
+            <LeadActivityButton contactName={lead.contact_name} locked={isClosed} />
+          )}
+          {/* Hover-revealed pencil — the exact same edit action
+              ListView's own pencil uses (onEdit, bound by BoardColumn to
+              this specific lead), not a new edit flow. Mirrors
+              ListView's own canEdit/isClosed branching: an editable
+              lead gets a working pencil, a CLOSED lead keeps the pencil
+              visible but disabled with the same CLOSED_LEAD_TOOLTIP the
+              clock icon already shows when locked (deliberately NOT
+              swapped for a separate lock glyph the way ListView's
+              Actions cell does — both icons on this card stay
+              themselves, just muted), and an open lead this caller
+              can't edit (not its owner, not an admin) shows neither —
+              same as ListView shows nothing in that case too.
+              onPointerDown stops propagation before it reaches the
+              card's own drag listeners — same belt-and-suspenders
+              reasoning as LeadActivityButton's own identical guard. */}
+          {onEdit && (canEdit || isClosed) ? (
+            <button
+              type="button"
+              disabled={!canEdit}
+              onClick={canEdit ? onEdit : undefined}
+              onPointerDown={(event) => event.stopPropagation()}
+              title={isClosed ? CLOSED_LEAD_TOOLTIP : undefined}
+              aria-label={isClosed ? CLOSED_LEAD_TOOLTIP : `Edit ${lead.contact_name}`}
+              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-neutral-200 text-neutral-400 opacity-100 transition-colors focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-sky-500/40 focus-visible:outline-none enabled:hover:border-neutral-300 enabled:hover:bg-neutral-50 enabled:hover:text-neutral-700 disabled:cursor-not-allowed sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
+            >
+              <PencilIcon className="h-3.5 w-3.5" />
+            </button>
+          ) : null}
+        </span>
       </div>
       {lead.source ? (
         <p className="mt-2 text-[10px] font-semibold tracking-wide text-neutral-400 uppercase">{lead.source}</p>

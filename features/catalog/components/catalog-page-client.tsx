@@ -50,7 +50,7 @@ export function CatalogPageClient({ initialPage, categories, canManage }: Catalo
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-neutral-900 sm:text-3xl">
-            Product &amp; service catalog
+            Product &amp; Service Catalog
           </h1>
           <p className="mt-1.5 text-sm text-neutral-500">
             What you sell, with pricing reps can attach to a proposal straight from a lead.

@@ -29,7 +29,7 @@ export function LeadsByStage({ leads, stages }: LeadsByStageProps) {
   return (
     <div className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-black/5">
       <div className="flex items-center justify-between">
-        <h2 className="text-base font-semibold text-neutral-900">Leads by stage</h2>
+        <h2 className="text-base font-semibold text-neutral-900">Leads By Stage</h2>
         <span className="text-xs font-medium text-neutral-500">
           {total} total lead{total === 1 ? "" : "s"}
         </span>
