@@ -1,6 +1,6 @@
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { generateTempPassword } from "@/features/auth/lib/generate-temp-password";
-import { getAppUrl } from "@/lib/app-url";
+import { isDeployedEnvironment, resolveAppUrl } from "@/lib/app-url";
 
 /**
  * SERVER-ONLY. Delivers an invitation by asking SUPABASE AUTH to send
@@ -40,7 +40,7 @@ import { getAppUrl } from "@/lib/app-url";
  */
 export type SendInvitationLinkResult =
   | { sent: true }
-  | { sent: false; reason: "auth_error" | "confirmation_disabled" };
+  | { sent: false; reason: "auth_error" | "confirmation_disabled" | "app_url_not_configured" };
 
 type SendInvitationLinkParams = {
   invitationId: string;
@@ -93,7 +93,33 @@ export async function sendInvitationLink({
   // invitee still has to hold the verified email address, which is what
   // the acceptance RPC actually checks. No customer id, role id,
   // manager id or token ever travels in the URL.
-  const emailRedirectTo = `${getAppUrl()}/accept-invitation/continue?invitation_id=${encodeURIComponent(invitationId)}`;
+  const appUrl = resolveAppUrl();
+
+  // REFUSE RATHER THAN SEND A BROKEN LINK. On a deployed environment with
+  // no APP_URL (and no stable Vercel production domain), this would fall
+  // back to http://localhost:3000 and mail the invitee a link only the
+  // developer's own machine could open. Supabase would accept the send,
+  // the admin would see "Invitation sent", and the invitee would get a
+  // dead link — the worst possible failure mode, because nothing reports
+  // it. Nothing is sent and the admin is told what to fix.
+  if (appUrl.source === "localhost" && isDeployedEnvironment()) {
+    console.error(
+      "[invitation] APP_URL is not set, so the invitation link would point at localhost. No email was sent.",
+    );
+    return { sent: false, reason: "app_url_not_configured" };
+  }
+
+  // A per-deployment Vercel hostname changes on every deploy and so can
+  // never stay allow-listed in Supabase; Supabase silently falls back to
+  // the Site URL, which is what made confirmation links land on the home
+  // page. Deliverable only if a wildcard was allow-listed deliberately.
+  if (!appUrl.isStable && appUrl.source === "VERCEL_URL") {
+    console.warn(
+      "[invitation] Using the per-deployment VERCEL_URL. Set APP_URL to a stable origin that is allow-listed in Supabase.",
+    );
+  }
+
+  const emailRedirectTo = `${appUrl.url}/accept-invitation/continue?invitation_id=${encodeURIComponent(invitationId)}`;
 
   const { data, error } = await supabase.auth.signUp({
     email,

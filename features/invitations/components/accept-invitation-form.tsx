@@ -156,6 +156,21 @@ export function AcceptInvitationForm({
 
       // The transaction has committed: the membership exists and the
       // invitation is ACCEPTED. Only now does the UI claim success.
+      //
+      // End this browser's session before showing that. The invitee just
+      // set a password they have never actually signed in with, and the
+      // session they are holding came from a one-time email link — having
+      // them log in properly once is what proves the password works and
+      // leaves them on the normal authenticated path. scope: "local"
+      // again, so nothing is revoked on any other device.
+      try {
+        await supabase.auth.signOut({ scope: "local" });
+      } catch {
+        // Acceptance already committed; a failed sign-out must not be
+        // reported as a failed acceptance. They will simply still be
+        // signed in when they reach /login, which is harmless.
+      }
+
       setIsAccepted(true);
     } catch {
       setFormError("Something went wrong while accepting the invitation. Please try again.");
@@ -171,26 +186,24 @@ export function AcceptInvitationForm({
         <MessageBanner tone="success">
           <p className="font-semibold">Invitation accepted</p>
           <p className="mt-0.5">
-            Your account has been successfully added to{" "}
-            {context?.companyName ? <strong>{context.companyName}</strong> : "your organization"}.
+            Your account has been successfully created
+            {context?.companyName ? <> for <strong>{context.companyName}</strong></> : null}. Please log in to
+            continue.
           </p>
         </MessageBanner>
 
         <button
           type="button"
           onClick={() => {
-            // Hard navigation, not router.push — the App Router's client
-            // Router Cache can otherwise serve a stale RSC payload for an
-            // auth-gated route immediately after the customer_users row
-            // is created, which looks like "bounced back to signup" even
-            // though acceptance succeeded. Same note LoginForm and
-            // SetPasswordForm carry.
+            // Hard navigation, not router.push: the session was just ended,
+            // and the App Router's client Router Cache would otherwise
+            // serve an RSC payload rendered while it still existed.
             // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- intentional hard navigation, see comment above
-            window.location.href = "/sales-management";
+            window.location.href = "/login";
           }}
           className="min-h-11 rounded-full bg-sky-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-sky-700"
         >
-          Continue to Sales Management
+          Continue to Log In
         </button>
       </div>
     );

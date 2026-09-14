@@ -182,9 +182,11 @@ export async function createInvitationAction(
     return {
       success: true,
       formError:
-        emailResult.reason === "confirmation_disabled"
-          ? "Invitation created, but no email was sent: email confirmation is turned off for this project."
-          : "Invitation created, but the invitation email could not be sent. Use Resend to try again.",
+        emailResult.reason === "app_url_not_configured"
+          ? "Invitation created, but no email was sent: the application URL is not configured, so the invitation link would not work. Set APP_URL, then use Resend."
+          : emailResult.reason === "confirmation_disabled"
+            ? "Invitation created, but no email was sent: email confirmation is turned off for this project."
+            : "Invitation created, but the invitation email could not be sent. Use Resend to try again.",
     };
   }
 
@@ -273,9 +275,11 @@ export async function resendInvitationAction(invitationId: string): Promise<Invi
     return {
       success: false,
       error:
-        emailResult.reason === "confirmation_disabled"
-          ? "No invitation email was sent: email confirmation is turned off for this project."
-          : "The invitation email could not be sent. Please try again.",
+        emailResult.reason === "app_url_not_configured"
+          ? "No invitation email was sent: the application URL is not configured, so the invitation link would not work."
+          : emailResult.reason === "confirmation_disabled"
+            ? "No invitation email was sent: email confirmation is turned off for this project."
+            : "The invitation email could not be sent. Please try again.",
     };
   }
 
