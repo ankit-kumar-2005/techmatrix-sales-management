@@ -34,11 +34,34 @@ import { getCurrentMembership } from "@/features/customers/lib/get-current-membe
  * away like this, since resetting a password for an already-registered
  * user is the entire point of that flow.
  */
+/**
+ * `next`/`on_error` are redirect TARGETS, and this route pastes them
+ * straight onto `origin`. A value like "//evil.com" would produce
+ * "https://thisapp.com//evil.com", which browsers follow off-site as a
+ * protocol-relative URL — so only same-origin paths are accepted, and
+ * anything else falls back to the caller's default.
+ *
+ * Added with the invitation flow specifically because that flow is the
+ * first to put a value in `next` that carries its own query string
+ * ("/accept-invitation?invitation_id=…") and the first where the value
+ * originates from a link an invitee arrived on rather than a fixed
+ * string in this codebase — both of which widen what reaches this
+ * parameter. Every existing caller ("/set-password", "/reset-password")
+ * passes this check unchanged, so signup verification, password
+ * recovery and login behave exactly as before.
+ */
+function safeRedirectPath(value: string | null, fallback: string): string {
+  if (!value || !value.startsWith("/") || value.startsWith("//")) {
+    return fallback;
+  }
+  return value;
+}
+
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
-  const next = searchParams.get("next") ?? "/set-password";
-  const onError = searchParams.get("on_error") ?? "/login";
+  const next = safeRedirectPath(searchParams.get("next"), "/set-password");
+  const onError = safeRedirectPath(searchParams.get("on_error"), "/login");
 
   if (code) {
     const supabase = await createClient();
@@ -56,5 +79,13 @@ export async function GET(request: Request) {
     }
   }
 
-  return NextResponse.redirect(`${origin}${onError}?error=link_invalid`);
+  // Built through URL rather than string concatenation: on_error can now
+  // carry its own query string ("/accept-invitation?invitation_id=…"),
+  // and appending "?error=…" to that would produce a second "?" — which
+  // would silently fold the error flag into the previous parameter's
+  // value instead of adding one. Unchanged for the existing callers,
+  // whose on_error values have no query string of their own.
+  const errorUrl = new URL(onError, origin);
+  errorUrl.searchParams.set("error", "link_invalid");
+  return NextResponse.redirect(errorUrl);
 }

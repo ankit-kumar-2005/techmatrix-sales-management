@@ -1,20 +1,43 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { getCurrentMembership } from "@/features/customers/lib/get-current-membership";
-import { FormField } from "@/components/shared/form-field";
+import { getAuthenticatedUser, getCurrentMembership } from "@/features/customers/lib/get-current-membership";
+import { getVisibleTeamDirectory } from "@/features/leads/lib/get-team-directory";
+import { getAssignableRoles } from "@/features/invitations/lib/get-roles";
+import { getInvitationsPage } from "@/features/invitations/lib/get-invitations";
+import { AddUserPageClient } from "@/features/invitations/components/add-user-page-client";
+
+const INITIAL_PAGE_SIZE = 10;
 
 /**
- * UI structure only — no invitation logic. This will connect to a
- * future customer_invitations table (create invite -> send email ->
- * accept -> auth user + customer_users created) in a later phase;
- * wiring that up is explicitly out of scope for this one. See CLAUDE.md
- * Section 7 (phase-based development).
+ * Settings → Add User. Auth + customer membership are already guarded by
+ * app/(app)/layout.tsx before this page renders (see every other page in
+ * this route group's identical note) — this page adds the ADMIN check
+ * and fetches what the UI needs.
+ *
+ * ROLE GATE CHANGED FROM THE PREVIOUS PLACEHOLDER, deliberately: the
+ * disabled stub this replaces gated on `isPrimaryAdmin`
+ * (customers.created_by — the one person who originally registered the
+ * company). Every piece of the invitation backend that actually exists
+ * now authorizes the ADMIN *role* instead: createInvitationAction,
+ * resendInvitationAction and cancelInvitationAction all check
+ * `membership.role !== "ADMIN"`, and RLS on customer_user_invitations
+ * uses is_customer_admin(). Keeping the Primary-Admin gate here would
+ * have told a legitimate second ADMIN they lack permission while the
+ * server happily accepted their invitations — a UI that contradicts its
+ * own backend. This aligns the page with the rule the server actually
+ * enforces; it does not grant anything the server wouldn't already
+ * allow, and it is a UX gate either way: RLS remains the boundary.
+ *
+ * Page 1 of the invitation history is fetched here so first paint has no
+ * loading flash. Every later page/search/filter change is fetched by
+ * InvitationList itself through getInvitationsPageAction — genuinely
+ * server-side, never the whole table sliced in the browser.
  */
 export default async function AddUserPage() {
   const supabase = await createClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await getAuthenticatedUser(supabase);
 
   if (!user) {
     redirect("/login");
@@ -25,64 +48,38 @@ export default async function AddUserPage() {
     redirect("/signup");
   }
 
-  if (!membership.isPrimaryAdmin) {
+  if (membership.role !== "ADMIN") {
     return (
       <div className="flex flex-col gap-6">
-        <h1 className="text-2xl font-bold text-neutral-900">Add User</h1>
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-neutral-900 sm:text-3xl">Add User</h1>
+          <span
+            aria-hidden="true"
+            className="mt-2 block h-1 w-10 rounded-full bg-gradient-to-r from-blue-600 to-violet-600"
+          />
+        </div>
         <div className="max-w-xl rounded-2xl bg-white p-6 text-sm text-neutral-600 shadow-sm ring-1 ring-black/5">
-          Only the Primary Admin can add users to this account.
+          Only an administrator can invite users to this organization.
         </div>
       </div>
     );
   }
 
-  return (
-    <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-bold text-neutral-900">Add User</h1>
-        <p className="mt-1 text-sm text-neutral-600">
-          Invite a new team member
-          {membership.customer.company_name ? ` to ${membership.customer.company_name}` : ""}.
-        </p>
-      </div>
+  // Roles and the manager directory are both small, bounded reads. The
+  // team directory comes from the existing get_visible_team_directory()
+  // RPC, which returns only ACTIVE members of the caller's own customer
+  // — so every manager option is valid by construction, and no other
+  // tenant's users can appear in the picker.
+  const [initialPage, roles, managerOptions] = await Promise.all([
+    getInvitationsPage(supabase, membership.customer.id, {
+      search: "",
+      status: "",
+      page: 0,
+      pageSize: INITIAL_PAGE_SIZE,
+    }),
+    getAssignableRoles(supabase),
+    getVisibleTeamDirectory(supabase),
+  ]);
 
-      <div className="max-w-xl rounded-2xl bg-white p-6 shadow-sm ring-1 ring-black/5">
-        <form className="flex flex-col gap-4">
-          <FormField label="Full Name" name="fullName" required placeholder="Jane Doe" disabled />
-          <FormField label="Email" name="email" type="email" required placeholder="jane@example.com" disabled />
-
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor="role" className="text-sm font-medium text-neutral-700">
-              Role
-            </label>
-            <select
-              id="role"
-              name="role"
-              disabled
-              className="rounded-lg border border-neutral-300 px-3.5 py-2.5 text-sm text-neutral-900 outline-none disabled:cursor-not-allowed disabled:bg-neutral-100"
-              defaultValue="SALES_REP"
-            >
-              <option value="ADMIN">Admin</option>
-              <option value="MANAGER">Manager</option>
-              <option value="SENIOR_SALES_REP">Senior Sales Rep</option>
-              <option value="SALES_REP">Sales Rep</option>
-            </select>
-          </div>
-
-          <p role="status" className="rounded-lg bg-sky-50 px-4 py-3 text-sm text-sky-800 ring-1 ring-sky-200">
-            Invitations aren&apos;t enabled yet — this will send an email invite once the
-            invitation system is connected in a later phase.
-          </p>
-
-          <button
-            type="button"
-            disabled
-            className="min-h-11 self-start rounded-full bg-sky-600 px-5 py-2.5 text-sm font-semibold text-white opacity-60 cursor-not-allowed"
-          >
-            Send Invitation
-          </button>
-        </form>
-      </div>
-    </div>
-  );
+  return <AddUserPageClient initialPage={initialPage} roles={roles} managerOptions={managerOptions} />;
 }

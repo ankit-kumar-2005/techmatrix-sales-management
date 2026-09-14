@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentMembership } from "@/features/customers/lib/get-current-membership";
+import { formatRoleLabel } from "@/features/customers/lib/role-labels";
 import { getTeamDirectory } from "@/features/leads/lib/get-team-directory";
 import { AvatarUpload } from "@/features/customers/components/avatar-upload";
 import { LogoutButton } from "@/features/auth/components/logout-button";
@@ -9,12 +10,10 @@ import { LockIcon } from "@/features/sales-management/components/icons";
 
 const dateFormatter = new Intl.DateTimeFormat("en-US", { dateStyle: "medium" });
 
-const ROLE_LABELS: Record<string, string> = {
-  ADMIN: "Administrator",
-  MANAGER: "Manager",
-  SENIOR_SALES_REP: "Senior Sales Rep",
-  SALES_REP: "Sales Rep",
-};
+// Role display labels moved to features/customers/lib/role-labels.ts
+// when Settings → Add User became a second consumer — one mapping, so
+// the same role can never render two different ways on two screens.
+// Same labels, same fallback-to-raw-name behavior as before.
 
 /**
  * Shows the user's real role (ADMIN/MANAGER/SENIOR_SALES_REP/SALES_REP)
@@ -121,7 +120,7 @@ export default async function ProfilePage() {
             <div>
               <dt className="text-xs font-medium tracking-wide text-neutral-500 uppercase">Role</dt>
               <dd className="mt-1.5 text-sm font-medium text-neutral-900">
-                {ROLE_LABELS[membership.role] ?? membership.role}
+                {formatRoleLabel(membership.role)}
               </dd>
             </div>
             <div>
