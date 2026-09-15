@@ -16,6 +16,14 @@ export type CustomerLeadStage = {
   /** The only thing that determines whether a lead in this stage is
    *  locked — never a name comparison like stage === "Won"/"Lost". */
   is_closed: boolean;
+  /** Which closed stages are WINS. Only ever true alongside is_closed
+   *  (CHECK-enforced), and the reason isWonStage() is no longer a name
+   *  match — see the stage_probability_and_outcome migration. */
+  is_won: boolean;
+  /** Whole percentage points, 0-100. Pinned by CHECK to 100 for a won
+   *  stage and 0 for any other closed stage; freely admin-configurable
+   *  for an open one. Drives every weighted forecast figure. */
+  probability: number;
   created_at: string;
   updated_at: string;
 };
@@ -39,6 +47,12 @@ export type Lead = {
    *  is locked — see the closed-lead-locking trigger. Never settable or
    *  clearable through a normal update. */
   closed_at: string | null;
+  /** A human's estimate of when this deal will close — forward-looking,
+   *  nullable, and not to be confused with closed_at (which records
+   *  when a deal DID close and is server-computed). NULL means "not
+   *  forecast yet", which is why an undated open deal counts toward the
+   *  Weighted Forecast total but cannot appear in the by-month chart. */
+  expected_close_date: string | null;
   created_at: string;
   updated_at: string;
 };

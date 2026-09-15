@@ -3,7 +3,7 @@ import { stageBadgeClasses, stageDotClass } from "../lib/stage-colors";
 import { LockIcon } from "@/features/sales-management/components/icons";
 
 type LeadStageBadgeProps = {
-  stage: Pick<CustomerLeadStage, "stage" | "is_closed" | "display_order">;
+  stage: Pick<CustomerLeadStage, "stage" | "is_closed" | "is_won" | "display_order">;
   /** Shows a small lock glyph — used on the lead's own badge (not the
    *  stage-config list) to make a closed/locked lead visually obvious
    *  in List/Board views, per "closed leads should be read-only" /

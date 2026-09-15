@@ -9,24 +9,30 @@ import type { CustomerLeadStage } from "@/types/lead";
  * adds stages still gets a distinct, sensible color with zero code
  * changes. The one exception is closed stages: see isWonStage below.
  */
-type StageColorInput = Pick<CustomerLeadStage, "is_closed" | "display_order" | "stage">;
+type StageColorInput = Pick<CustomerLeadStage, "is_closed" | "is_won" | "display_order">;
 
 /**
- * There is no is_won (or equivalent) column in customer_lead_stages
- * (deliberately not added — see the dynamic_lead_stages_and_closed_locking
- * migration's design notes), so a closed stage can't be resolved to
- * "won" vs. "lost" from data alone. This is the one place in the color
- * system that falls back to a name comparison: a closed stage whose
- * name matches "Won" case-insensitively (the seeded default, and
- * anything a customer renames to match it) is treated as won; every
- * other closed stage is treated as lost. Same known, documented
- * limitation already accepted for the Sales Pipeline page's Win Rate /
- * Avg. Closed-Won Deal KPIs — this just reuses that one function so the
- * "what counts as won" definition can't drift between the KPI numbers
- * and the colors shown for the exact same leads.
+ * Whether a closed stage is a WIN rather than a loss.
+ *
+ * WAS A NAME MATCH, NOW A COLUMN. This used to read
+ * `is_closed && stage.trim().toLowerCase() === "won"`, because
+ * customer_lead_stages had no is_won column — a documented limitation
+ * that quietly mis-classified any tenant who renamed the stage to
+ * "Closed Won" or "Contract Signed" as a LOSS. The
+ * stage_probability_and_outcome migration adds the real column (backfilled
+ * to reproduce that old rule exactly, so no existing tenant's Win Rate
+ * moved), and this collapses to reading it.
+ *
+ * Still a function rather than an inlined `stage.is_won` at each call
+ * site, and still the single definition shared by the stage colors here
+ * and by the Pipeline page's Win Rate / Avg. Closed-Won Deal KPIs and
+ * the Forecast module — so "what counts as won" cannot drift between
+ * the numbers and the colors shown for the exact same leads. The
+ * database's own CHECK (is_won implies is_closed) is what makes reading
+ * one column sufficient.
  */
-export function isWonStage(stage: Pick<CustomerLeadStage, "is_closed" | "stage"> | undefined): boolean {
-  return Boolean(stage?.is_closed) && stage!.stage.trim().toLowerCase() === "won";
+export function isWonStage(stage: Pick<CustomerLeadStage, "is_won"> | undefined): boolean {
+  return Boolean(stage?.is_won);
 }
 
 // Indexed by display_order % length. Index 0 is the wrap-around slot

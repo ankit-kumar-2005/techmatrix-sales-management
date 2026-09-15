@@ -53,6 +53,10 @@ export type LeadFormDefaultValues = {
   email?: string | null;
   company?: string | null;
   deal_value?: number | null;
+  /** ISO yyyy-mm-dd, which is both what the leads.expected_close_date
+   *  `date` column returns and what <input type="date"> requires — no
+   *  conversion needed in either direction. */
+  expected_close_date?: string | null;
   stage_id?: string;
   owner_id?: string | null;
   source?: string | null;
@@ -207,6 +211,20 @@ export function LeadFormFields({ stages, owners, role, currentUserEmail, fieldEr
         </div>
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          {/* Optional on purpose: plenty of deals have no realistic close
+              date yet, and a blank submits "" which the schema turns into
+              a real NULL. An undated deal still counts toward the
+              Weighted Forecast total — it just can't be placed on the
+              by-month chart, which the Forecast page says out loud. */}
+          <FormField
+            label="Expected Close Date"
+            name="expected_close_date"
+            type="date"
+            variant="filled"
+            defaultValue={defaultValues?.expected_close_date ?? undefined}
+            error={fieldErrors.expected_close_date}
+            helperText="Used for revenue forecasting. Leave blank if unknown."
+          />
           <SelectField
             label="Stage"
             id="lead-stage"

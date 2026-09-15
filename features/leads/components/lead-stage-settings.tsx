@@ -124,7 +124,23 @@ function StageRow({ stage, canConfigure, isFirst, isLast, onEdit }: StageRowProp
         ) : null}
         {stage.is_closed ? (
           <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-neutral-500 uppercase">
-            Closed
+            {stage.is_won ? "Closed · Won" : "Closed"}
+          </span>
+        ) : null}
+        {/* Only meaningful for an open stage — a closed one's probability
+            is derived (won = 100%, everything else 0%) and showing it
+            here would read as a setting rather than a consequence. A 0%
+            open stage is called out in amber because it contributes
+            nothing to the forecast, which is almost always an oversight
+            rather than a decision. */}
+        {!stage.is_closed ? (
+          <span
+            title="Probability used to weight this stage in the revenue forecast"
+            className={`rounded-full px-2 py-0.5 text-[10px] font-semibold tracking-wide uppercase ${
+              stage.probability === 0 ? "bg-amber-50 text-amber-700" : "bg-neutral-100 text-neutral-500"
+            }`}
+          >
+            {stage.probability}% likely
           </span>
         ) : null}
       </div>
@@ -182,6 +198,33 @@ function StageDialog({ title, stage, onClose }: StageDialogProps) {
   const [state, formAction] = useActionState(action, initialLeadStageFormState);
   const fieldErrors = state.fieldErrors ?? {};
 
+  // Controlled (not defaultChecked) because the three outcome fields are
+  // interdependent: "counts as won" is only meaningful for a closed
+  // stage, and a closed stage's probability is fully determined by
+  // whether it's a win. Driving all three from state is what makes the
+  // combination the database rejects (is_won without is_closed)
+  // unreachable from this form — resolveStageOutcome in actions.ts still
+  // guards it server-side, because a form is never the boundary.
+  const [isClosed, setIsClosed] = useState(stage?.is_closed ?? false);
+  const [isWon, setIsWon] = useState(stage?.is_won ?? false);
+  // Blank for a new stage on purpose — the schema requires a value, so
+  // adding a stage is a deliberate choice about what it contributes to
+  // the forecast rather than a silent inherit of the column's 0 default.
+  const [probability, setProbability] = useState(stage ? String(stage.probability) : "");
+
+  // What actually submits. readOnly rather than disabled for the closed
+  // case: a disabled input submits NOTHING, which would trip the
+  // schema's own "Probability is required" instead of sending the
+  // derived value.
+  const submittedProbability = isClosed ? (isWon ? "100" : "0") : probability;
+
+  // Unchecking "closed" must also clear "won" — leaving it set would be
+  // exactly the contradictory state the CHECK refuses.
+  function handleClosedChange(nextIsClosed: boolean) {
+    setIsClosed(nextIsClosed);
+    if (!nextIsClosed) setIsWon(false);
+  }
+
   // Same fix as EditLeadDialog: onClose here updates the PARENT's
   // (LeadStageSettings') isAddOpen/editingStage state, not this
   // component's own — that must be deferred to an effect, not called
@@ -207,15 +250,71 @@ function StageDialog({ title, stage, onClose }: StageDialogProps) {
           autoFocus
         />
 
-        <label className="flex items-center gap-2 text-sm text-neutral-700">
-          <input
-            type="checkbox"
-            name="is_closed"
-            defaultChecked={stage?.is_closed ?? false}
-            className="h-4 w-4 rounded border-neutral-300 text-sky-600 focus:ring-2 focus:ring-sky-500/30"
-          />
-          Mark as closed stage
-        </label>
+        <FormField
+          label="Win Probability (%)"
+          name="probability"
+          type="number"
+          min="0"
+          max="100"
+          step="1"
+          required
+          variant="filled"
+          value={submittedProbability}
+          onChange={(event) => setProbability(event.target.value)}
+          readOnly={isClosed}
+          error={fieldErrors.probability}
+          placeholder="e.g. 45"
+          helperText={
+            isClosed
+              ? isWon
+                ? "A won stage is always 100% — this deal already closed."
+                : "A closed stage that isn't a win is always 0% — it will never close."
+              : "Used to weight this stage in the revenue forecast."
+          }
+          className={isClosed ? "cursor-not-allowed" : ""}
+        />
+
+        <div className="flex flex-col gap-2">
+          <label className="flex items-center gap-2 text-sm text-neutral-700">
+            <input
+              type="checkbox"
+              name="is_closed"
+              checked={isClosed}
+              onChange={(event) => handleClosedChange(event.target.checked)}
+              className="h-4 w-4 rounded border-neutral-300 text-sky-600 focus:ring-2 focus:ring-sky-500/30"
+            />
+            Mark as closed stage
+          </label>
+
+          {/* Disabled (not hidden) when the stage is open: a disabled
+              checkbox submits nothing, so is_won arrives as false, and
+              keeping the row visible explains WHY it can't be set. */}
+          <label
+            className={`flex items-center gap-2 text-sm ${isClosed ? "text-neutral-700" : "text-neutral-400"}`}
+          >
+            <input
+              type="checkbox"
+              name="is_won"
+              checked={isWon}
+              disabled={!isClosed}
+              onChange={(event) => setIsWon(event.target.checked)}
+              className="h-4 w-4 rounded border-neutral-300 text-emerald-600 focus:ring-2 focus:ring-emerald-500/30 disabled:cursor-not-allowed"
+            />
+            This stage counts as won
+          </label>
+
+          <p className="text-xs text-neutral-500">
+            {isClosed
+              ? "Leads reaching a closed stage are locked. Won stages feed Closed-Won to Date and Win Rate; every other closed stage counts as lost."
+              : "Only a closed stage can count as won."}
+          </p>
+
+          {fieldErrors.is_won ? (
+            <p role="alert" className="text-xs font-medium text-red-600">
+              {fieldErrors.is_won}
+            </p>
+          ) : null}
+        </div>
 
         {state.formError ? <MessageBanner tone="error">{state.formError}</MessageBanner> : null}
 

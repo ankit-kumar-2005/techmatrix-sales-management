@@ -159,6 +159,7 @@ export async function createLeadAction(
     phone: parsed.data.phone,
     whatsapp_phone: whatsappPhone,
     deal_value: parsed.data.deal_value ?? null,
+    expected_close_date: parsed.data.expected_close_date ?? null,
     stage_id: parsed.data.stage_id,
     owner_id: ownerId,
     source: parsed.data.source ?? null,
@@ -170,6 +171,7 @@ export async function createLeadAction(
   }
 
   revalidatePath("/sales-management");
+  revalidatePath("/forecast");
   return { success: true };
 }
 
@@ -271,6 +273,7 @@ export async function updateLeadAction(
     phone: parsed.data.phone,
     whatsapp_phone: whatsappPhone,
     deal_value: parsed.data.deal_value ?? null,
+    expected_close_date: parsed.data.expected_close_date ?? null,
     stage_id: parsed.data.stage_id,
     source: parsed.data.source ?? null,
     next_step: parsed.data.next_step ?? null,
@@ -299,7 +302,55 @@ export async function updateLeadAction(
   }
 
   revalidatePath("/sales-management");
+  revalidatePath("/forecast");
   return { success: true };
+}
+
+/**
+ * The two stage-outcome rules the database enforces with CHECK
+ * constraints, applied here first so a legitimate admin never sees a raw
+ * constraint violation.
+ *
+ * RULE 1 — REJECTED, not corrected: is_won requires is_closed.
+ *   "This stage is a win" and "this stage is still open" are
+ *   contradictory statements about the business, and there is no way to
+ *   tell which one the admin meant — silently clearing either flag could
+ *   reclassify live deals (a stage flipping to closed LOCKS every lead in
+ *   it, permanently, via protect_lead_stage_transition). So this returns
+ *   a field error and writes nothing. The Stage Settings dialog also
+ *   makes the combination unreachable by unchecking "counts as won"
+ *   whenever "closed" is unchecked, so in practice this is the guard for
+ *   a crafted request, not for the UI — but it is a real guard either
+ *   way, because the UI is not the boundary.
+ *
+ * RULE 2 — CORRECTED, not rejected: probability is derived for closed
+ *   stages (won = 100, any other closed stage = 0). Unlike rule 1 there
+ *   is no ambiguity about intent here: the outcome flags fully determine
+ *   the only legal value, so normalizing is the correct, non-destructive
+ *   thing to do. The dialog renders that derived value as a read-only
+ *   input, so an admin never types a number this then overrides.
+ *
+ * Returns either a field error to hand straight back as the action's
+ * result, or the probability to persist.
+ */
+function resolveStageOutcome(input: {
+  is_closed: boolean;
+  is_won: boolean;
+  probability: number;
+}): { error: LeadStageFormState } | { probability: number } {
+  if (input.is_won && !input.is_closed) {
+    return {
+      error: {
+        fieldErrors: {
+          is_won: "A stage can only count as won if it is also marked as a closed stage.",
+        },
+      },
+    };
+  }
+
+  if (input.is_won) return { probability: 100 };
+  if (input.is_closed) return { probability: 0 };
+  return { probability: input.probability };
 }
 
 /**
@@ -342,6 +393,11 @@ export async function createLeadStageAction(
     return { fieldErrors: getFieldErrors(parsed.error) };
   }
 
+  const outcome = resolveStageOutcome(parsed.data);
+  if ("error" in outcome) {
+    return outcome.error;
+  }
+
   const { data: nextOrder } = await supabase
     .from("customer_lead_stages")
     .select("display_order")
@@ -355,6 +411,8 @@ export async function createLeadStageAction(
     stage: parsed.data.stage,
     display_order: (nextOrder?.display_order ?? 0) + 1,
     is_closed: parsed.data.is_closed,
+    is_won: parsed.data.is_won,
+    probability: outcome.probability,
   });
 
   if (error) {
@@ -364,11 +422,17 @@ export async function createLeadStageAction(
     if (error.code === "23505") {
       return { fieldErrors: { stage: "A stage with this name already exists." } };
     }
+    if (error.code === "23514") {
+      return {
+        formError: "That combination of closed/won and probability isn't allowed. Please review the fields and try again.",
+      };
+    }
     return { formError: "Something went wrong creating the stage. Please try again." };
   }
 
   revalidatePath("/settings/company-information");
   revalidatePath("/sales-management");
+  revalidatePath("/forecast");
   return { success: true };
 }
 
@@ -398,11 +462,18 @@ export async function updateLeadStageAction(
     return { fieldErrors: getFieldErrors(parsed.error) };
   }
 
+  const outcome = resolveStageOutcome(parsed.data);
+  if ("error" in outcome) {
+    return outcome.error;
+  }
+
   const { error } = await supabase
     .from("customer_lead_stages")
     .update({
       stage: parsed.data.stage,
       is_closed: parsed.data.is_closed,
+      is_won: parsed.data.is_won,
+      probability: outcome.probability,
     })
     .eq("id", parsed.data.id)
     .eq("customer_id", membership.customer.id);
@@ -411,11 +482,22 @@ export async function updateLeadStageAction(
     if (error.code === "23505") {
       return { fieldErrors: { stage: "A stage with this name already exists." } };
     }
+    // 23514 = check_violation. resolveStageOutcome above should make both
+    // of this table's outcome CHECKs unreachable; this exists so that if
+    // one is ever hit anyway, it still reads as a sentence rather than as
+    // Postgres constraint text (CLAUDE.md Section K — never surface raw
+    // database error text).
+    if (error.code === "23514") {
+      return {
+        formError: "That combination of closed/won and probability isn't allowed. Please review the fields and try again.",
+      };
+    }
     return { formError: "Something went wrong updating the stage. Please try again." };
   }
 
   revalidatePath("/settings/company-information");
   revalidatePath("/sales-management");
+  revalidatePath("/forecast");
   return { success: true };
 }
 
@@ -443,6 +525,7 @@ export async function setLeadStageStatusAction(stageId: string, status: "Active"
 
   revalidatePath("/settings/company-information");
   revalidatePath("/sales-management");
+  revalidatePath("/forecast");
 }
 
 /**
@@ -496,6 +579,7 @@ export async function reorderLeadStageAction(stageId: string, direction: "up" | 
 
   revalidatePath("/settings/company-information");
   revalidatePath("/sales-management");
+  revalidatePath("/forecast");
 }
 
 export type MoveLeadStageResult = { success: boolean; error?: string };
@@ -592,5 +676,6 @@ export async function moveLeadStageAction(leadId: string, stageId: string): Prom
   }
 
   revalidatePath("/sales-management");
+  revalidatePath("/forecast");
   return { success: true };
 }

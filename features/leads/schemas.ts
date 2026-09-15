@@ -44,6 +44,33 @@ const optionalDealValue = () =>
     });
 
 /**
+ * An empty date input submits "", which means "no expected close date" —
+ * normalized to undefined so the action stores a real NULL rather than a
+ * blank string, exactly as optionalDealValue does for deal value. NULL
+ * is meaningful here ("not forecast yet"), not a missing value to
+ * paper over.
+ *
+ * Format is validated, not just non-emptiness: <input type="date">
+ * always submits ISO yyyy-mm-dd, but this schema also runs against
+ * whatever a crafted request sends, and Postgres would reject a bad
+ * value with a raw 22007 rather than a field error. A PAST date is
+ * deliberately allowed — a slipped forecast date is a real, common
+ * state, and the Forecast chart gives those their own Overdue bucket.
+ */
+const optionalDate = (label: string) =>
+  z
+    .string()
+    .trim()
+    .optional()
+    .transform((value) => (value ? value : undefined))
+    .refine(
+      (value) =>
+        value === undefined ||
+        (/^d{4}-d{2}-d{2}$/.test(value) && !Number.isNaN(new Date(`${value}T00:00:00Z`).getTime())),
+      { message: `${label} must be a valid date.` },
+    );
+
+/**
  * No phone-format validation existed anywhere in this app before this
  * (signup/company phone were both just "non-empty") — there is no
  * existing business rule to preserve, so this defines one: digits plus
@@ -108,6 +135,7 @@ const leadFieldsShape = {
     .transform((value) => value === "on"),
   whatsapp_phone: optionalPhone(),
   deal_value: optionalDealValue(),
+  expected_close_date: optionalDate("Expected close date"),
   stage_id: z.string().trim().min(1, "Select a stage.").uuid("Select a stage."),
   owner_id: optionalText(),
   source: optionalText(),
@@ -144,12 +172,42 @@ const stageName = () =>
     .min(1, "Stage name is required.")
     .max(60, "Stage name must be 60 characters or fewer.");
 
-export const createLeadStageSchema = z.object({
-  stage: stageName(),
-  is_closed: z
+/**
+ * Whole percentage points only, 0-100 — matching the smallint column and
+ * its CHECK. Required (not optional-with-a-default) so creating a stage
+ * is a deliberate choice about what it contributes to the forecast,
+ * rather than silently inheriting the column's conservative 0.
+ *
+ * The CHECK also pins probability to 100 for a won stage and 0 for any
+ * other closed stage. That is NOT re-validated here: Zod cannot see
+ * is_won/is_closed's interaction cleanly on a FormData shape where both
+ * are checkbox strings, and the actions normalize probability against
+ * them before writing (see normalizeStageOutcome in actions.ts) so the
+ * database never has to reject the combination.
+ */
+const stageProbability = () =>
+  z
+    .string()
+    .trim()
+    .min(1, "Probability is required.")
+    .transform((value) => Number(value))
+    .refine((value) => Number.isInteger(value) && value >= 0 && value <= 100, {
+      message: "Probability must be a whole number between 0 and 100.",
+    });
+
+/** An unchecked checkbox submits nothing at all; a checked one submits
+ *  "on". Same transform is_closed has always used. */
+const stageFlag = () =>
+  z
     .string()
     .optional()
-    .transform((value) => value === "on"),
+    .transform((value) => value === "on");
+
+export const createLeadStageSchema = z.object({
+  stage: stageName(),
+  is_closed: stageFlag(),
+  is_won: stageFlag(),
+  probability: stageProbability(),
 });
 
 export type CreateLeadStageInput = z.infer<typeof createLeadStageSchema>;
@@ -157,10 +215,9 @@ export type CreateLeadStageInput = z.infer<typeof createLeadStageSchema>;
 export const updateLeadStageSchema = z.object({
   id: z.string().uuid(),
   stage: stageName(),
-  is_closed: z
-    .string()
-    .optional()
-    .transform((value) => value === "on"),
+  is_closed: stageFlag(),
+  is_won: stageFlag(),
+  probability: stageProbability(),
 });
 
 export type UpdateLeadStageInput = z.infer<typeof updateLeadStageSchema>;

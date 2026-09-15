@@ -43,7 +43,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: "Contacts", icon: ContactsIcon, href: "/contacts" },
   { label: "Tasks", icon: TasksIcon, href: "/tasks" },
   { label: "Team", icon: TeamIcon },
-  { label: "Forecast", icon: ForecastIcon },
+  { label: "Forecast", icon: ForecastIcon, href: "/forecast" },
   { label: "Meeting Notes", icon: MeetingNotesIcon },
 ];
 

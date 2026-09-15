@@ -126,6 +126,7 @@ export function EditLeadDialog({
               email: lead.email,
               company: lead.company,
               deal_value: lead.deal_value,
+              expected_close_date: lead.expected_close_date,
               stage_id: lead.stage_id,
               owner_id: lead.owner_id,
               source: lead.source,
