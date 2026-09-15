@@ -64,7 +64,13 @@ type SendInvitationLinkParams = {
  * browser — they could never present a verifier this client generated,
  * so a PKCE link would be unusable. Implicit puts the session in the
  * redirect URL's fragment instead, which the invitee's own browser
- * consumes on /accept-invitation/continue. Browser-initiated flows
+ * consumes on /accept-invitation.
+ *
+ * That consumption is DELIBERATELY MANUAL (InvitationLinkHandler reads
+ * the fragment and calls setSession). @supabase/ssr's createBrowserClient
+ * hard-codes flowType "pkce" and its automatic detectSessionInUrl throws
+ * on an implicit fragment rather than reading it — see
+ * features/invitations/lib/auth-link-payload.ts. Browser-initiated flows
  * (signup, password reset) are untouched and keep using PKCE.
  */
 function createStatelessAuthClient() {
@@ -119,7 +125,7 @@ export async function sendInvitationLink({
     );
   }
 
-  const emailRedirectTo = `${appUrl.url}/accept-invitation/continue?invitation_id=${encodeURIComponent(invitationId)}`;
+  const emailRedirectTo = `${appUrl.url}/accept-invitation?invitation_id=${encodeURIComponent(invitationId)}`;
 
   const { data, error } = await supabase.auth.signUp({
     email,

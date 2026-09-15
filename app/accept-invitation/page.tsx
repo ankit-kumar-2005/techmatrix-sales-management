@@ -1,10 +1,12 @@
+import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { AuthShell } from "@/features/auth/components/auth-shell";
 import { MessageBanner } from "@/components/shared/message-banner";
 import { AcceptInvitationForm } from "@/features/invitations/components/accept-invitation-form";
+import { InvitationLinkHandler } from "@/features/invitations/components/invitation-link-handler";
 import { getInvitationContext } from "@/features/invitations/lib/get-invitation-context";
-import { InvitationSessionRecovery } from "@/features/invitations/components/invitation-session-recovery";
-import Link from "next/link";
+import { getPendingInvitationIdForCurrentUser } from "@/features/invitations/lib/get-pending-invitation";
+import { getCurrentMembership } from "@/features/customers/lib/get-current-membership";
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -13,34 +15,34 @@ type AcceptInvitationPageProps = {
 };
 
 /**
- * Where an invited user finishes onboarding: set a password, accept, done.
+ * THE invitation screen — and now the only one. The emailed link points
+ * straight here (see sendInvitationLink); /accept-invitation/continue is
+ * gone, along with the second component that used to reload this page
+ * when a cookie lost a race. One route, one hand-off, one password step.
  *
  * Deliberately OUTSIDE the (app) route group — the person opening this
  * has no membership yet, which is the entire point — so it uses AuthShell,
  * the same frame /login, /signup, /set-password and /reset-password use.
  *
- * THIS PAGE NO LONGER ASKS FOR AN EMAIL. It previously opened on an
- * email-entry step that sent a second verification email of its own; the
- * invitation email has already established and verified who was invited,
- * so the first thing the invitee now sees is the password form. Arriving
- * here without a server-visible session is treated as a recoverable
- * hand-off problem first (see the branch below) and only then reported,
- * rather than starting a parallel signup.
+ * NO EMAIL IS EVER ASKED FOR HERE. Supabase verified the invited address
+ * one click earlier; asking again would be a second, parallel signup.
  *
  * Nothing about the invitation is read for an unauthenticated visitor:
  * get_invitation_context returns nothing without a session, so a
- * link-holder still learns no organization detail. A signed-in visitor
- * whose address does not match gets only that fact plus a masked hint.
- * Every decision that matters is re-made inside
+ * link-holder learns no organization detail. A signed-in visitor whose
+ * address does not match gets only that fact plus a masked hint. Every
+ * decision that matters is re-made inside
  * accept_customer_user_invitation() against the caller's VERIFIED email.
  */
 export default async function AcceptInvitationPage({ searchParams }: AcceptInvitationPageProps) {
   const params = await searchParams;
-  const invitationId = params.invitation_id?.trim() ?? "";
+  const requestedId = params.invitation_id?.trim() ?? "";
 
   // Shape check only — a well-formed id that doesn't exist is deliberately
   // indistinguishable from one addressed to somebody else.
-  if (!UUID_PATTERN.test(invitationId)) {
+  const idFromUrl = UUID_PATTERN.test(requestedId) ? requestedId : null;
+
+  if (requestedId && !idFromUrl) {
     return (
       <AuthShell title="Invitation link not valid" description="This link is missing or incomplete.">
         <MessageBanner tone="error">
@@ -56,41 +58,39 @@ export default async function AcceptInvitationPage({ searchParams }: AcceptInvit
     data: { user },
   } = await supabase.auth.getUser();
 
-  // No session VISIBLE TO THE SERVER. That is not automatically the same
-  // as "not signed in": the invitation session is established by the
-  // browser client and stored in cookies, and that write can lose a race
-  // with this navigation. InvitationSessionRecovery asks the browser
-  // directly and reloads once if a session really is there, so a won
-  // hand-off is never shown as a failure. If there genuinely is no
-  // session, it renders nothing and this message stands.
+  // No session VISIBLE TO THE SERVER. On a fresh click of the emailed
+  // link that is the NORMAL first render: Supabase hands the session
+  // over in the URL fragment, which is never sent to a server. Only the
+  // browser can see it, so InvitationLinkHandler reads it, calls
+  // setSession(), and reloads into the branch below. It also covers the
+  // rarer case of a cookie that simply hasn't landed yet, and reports a
+  // genuinely dead link honestly instead of starting a parallel signup.
   if (!user?.email) {
     return (
       <AuthShell
-        title="Open the link from your email"
-        description="Your invitation link signs you in, so this page needs to be opened from that email."
+        title="Confirming your invitation"
+        description="Just a moment while we confirm the link from your email."
       >
-        <div className="flex flex-col gap-4">
-          <InvitationSessionRecovery />
-
-          <MessageBanner tone="warning">
-            <p>
-              We couldn&rsquo;t confirm your sign-in. Invitation links work once, so this can happen if the
-              link was already opened or has run out of time.
-            </p>
-            <p className="mt-1.5">
-              Open the most recent invitation email, or ask your administrator to resend it.
-            </p>
-          </MessageBanner>
-
-          <Link
-            href="/login"
-            className="min-h-11 rounded-full border border-neutral-300 px-5 py-2.5 text-center text-sm font-semibold text-neutral-700 transition hover:bg-neutral-50"
-          >
-            Already have a password? Log In
-          </Link>
-        </div>
+        <InvitationLinkHandler invitationId={idFromUrl ?? ""} />
       </AuthShell>
     );
+  }
+
+  // The id normally arrives in the link. It can be missing only when the
+  // redirect that carried it was replaced by Supabase's Site-URL
+  // fallback (see InvitationLinkFallback) — in which case the session
+  // itself still identifies exactly one pending invitation, and this
+  // SECURITY DEFINER lookup takes no parameters, so it can only ever
+  // answer for the caller themselves.
+  const invitationId = idFromUrl ?? (await getPendingInvitationIdForCurrentUser(supabase));
+
+  if (!invitationId) {
+    // Signed in, but with no invitation named and none waiting. Not a
+    // dead end: send them wherever they actually belong. Only reachable
+    // when the URL named no invitation at all — an explicit id is always
+    // rendered below, whatever state it turns out to be in.
+    const membership = await getCurrentMembership(supabase, user.id);
+    redirect(membership ? "/sales-management" : "/set-password");
   }
 
   const context = await getInvitationContext(supabase, invitationId);
@@ -104,7 +104,7 @@ export default async function AcceptInvitationPage({ searchParams }: AcceptInvit
           ? "Wrong account for this invitation"
           : isBlocked
             ? "Invitation not available"
-            : "Set your password"
+            : "You're Invited"
       }
       description={
         isWrongAccount
@@ -112,8 +112,8 @@ export default async function AcceptInvitationPage({ searchParams }: AcceptInvit
           : isBlocked
             ? "This invitation can no longer be used."
             : context?.companyName
-              ? `You've been invited to join ${context.companyName}. Choose a password to finish setting up your account.`
-              : "Choose a password to finish setting up your account."
+              ? `You have been invited to join ${context.companyName} on Techmatrix Sales Management. Set a password to finish setting up your account.`
+              : "Set a password to finish setting up your account."
       }
     >
       <AcceptInvitationForm invitationId={invitationId} authenticatedEmail={user.email} context={context} />

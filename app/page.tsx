@@ -4,6 +4,7 @@ import { SiteFooter } from "@/features/marketing/components/site-footer";
 import { ScrollFadeIn } from "@/features/marketing/components/scroll-fade-in";
 import { LogoMarquee } from "@/features/marketing/components/logo-marquee";
 import { TestimonialCarousel } from "@/features/marketing/components/testimonial-carousel";
+import { InvitationLinkFallback } from "@/features/invitations/components/invitation-link-fallback";
 import {
   ArrowRightIcon,
   AutomationsIcon,
@@ -79,6 +80,12 @@ const STATS = [
 export default function HomePage() {
   return (
     <div className="flex min-h-screen flex-col bg-white">
+      {/* Renders nothing and does nothing for a normal visitor. It acts
+          only when Supabase bounced an invitation link here instead of
+          /accept-invitation — which is what it does, silently, whenever
+          the invitation's redirect URL is not allow-listed for the
+          project. See the component for the full note. */}
+      <InvitationLinkFallback />
       <SiteHeader />
 
       <main className="flex-1">

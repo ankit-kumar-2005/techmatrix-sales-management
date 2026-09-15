@@ -410,50 +410,6 @@ export async function acceptInvitationAction(invitationId: string): Promise<Invi
     p_invitation_id: invitationId,
   });
 
-  // ---------------------------------------------------------------------
-  // TEMPORARY DIAGNOSTIC — delete once invitation acceptance is confirmed
-  // working end to end.
-  //
-  // DEVELOPMENT ONLY, so no email address ever reaches a production log.
-  // Nothing sensitive is recorded: no tokens, no passwords, no keys, no
-  // invitation secret (there isn't one). The probe below runs under the
-  // CALLER's own RLS, so it returns a row only for an admin of that
-  // customer and nothing at all for an invitee — it grants no access
-  // anybody didn't already have, it only reports what they can see.
-  //
-  // Reading it: the RPC deliberately answers "not found" and "addressed
-  // to somebody else" with the SAME message, so the application cannot
-  // tell them apart. These two lines can:
-  //   invitationVisibleToCaller false + emailsMatch null -> either the id
-  //     doesn't exist, or you're signed in as someone who can't see it
-  //   emailsMatch false -> the signed-in account is not the invited one
-  // ---------------------------------------------------------------------
-  if (process.env.NODE_ENV !== "production") {
-    const normalizedUserEmail = user.email?.trim().toLowerCase() ?? null;
-
-    const { data: probe } = await supabase
-      .from("customer_user_invitations")
-      .select("id, email, status, expires_at")
-      .eq("id", invitationId)
-      .maybeSingle();
-
-    const normalizedInvitationEmail =
-      typeof probe?.email === "string" ? probe.email.trim().toLowerCase() : null;
-
-    console.log("[invitation:accept]", {
-      invitationId,
-      authUserId: user.id,
-      normalizedUserEmail,
-      invitationVisibleToCaller: Boolean(probe),
-      normalizedInvitationEmail,
-      invitationStatus: probe?.status ?? null,
-      invitationExpiresAt: probe?.expires_at ?? null,
-      emailsMatch:
-        normalizedInvitationEmail === null ? null : normalizedInvitationEmail === normalizedUserEmail,
-      rpcError: error?.message ?? null,
-    });
-  }
-
   if (error) {
     return { success: false, error: translateDatabaseError(error.message) };
   }

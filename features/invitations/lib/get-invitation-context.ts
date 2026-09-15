@@ -11,6 +11,10 @@ export type InvitationContext = {
   matchesCurrentUser: boolean;
   /** Always masked (r***l@acme.com), never the full address. */
   invitedEmailHint: string | null;
+  /** The name the admin entered in Add User — the same value the
+   *  acceptance RPC copies into customer_users.name, so the screen
+   *  cannot show one name and create another. */
+  invitedFullName: string | null;
   companyName: string | null;
   roleName: string | null;
   managerName: string | null;
@@ -21,6 +25,7 @@ export type InvitationContext = {
 type InvitationContextRow = {
   matches_current_user: boolean | null;
   invited_email_hint: string | null;
+  invited_full_name: string | null;
   company_name: string | null;
   role_name: string | null;
   manager_name: string | null;
@@ -54,6 +59,7 @@ export async function getInvitationContext(
   return {
     matchesCurrentUser: row.matches_current_user === true,
     invitedEmailHint: row.invited_email_hint,
+    invitedFullName: row.invited_full_name,
     companyName: row.company_name,
     roleName: row.role_name,
     managerName: row.manager_name,

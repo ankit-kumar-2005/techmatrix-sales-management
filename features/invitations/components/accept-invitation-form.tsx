@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { newPasswordSchema } from "@/features/auth/schemas";
@@ -16,9 +16,9 @@ import type { InvitationContext } from "../lib/get-invitation-context";
 type AcceptInvitationFormProps = {
   invitationId: string;
   /** Server-verified via supabase.auth.getUser(). Non-null by
-   *  construction: the page renders its own "use the link from your
-   *  email" state when there is no session, so this component only ever
-   *  mounts for an authenticated visitor. */
+   *  construction: the page renders its own link-handler state when
+   *  there is no session, so this component only ever mounts for an
+   *  authenticated visitor. */
   authenticatedEmail: string;
   /** What the DATABASE is willing to tell this viewer about the
    *  invitation (get_invitation_context). Null when there's no such
@@ -26,6 +26,24 @@ type AcceptInvitationFormProps = {
    *  still renders and the acceptance RPC remains the authority. */
   context: InvitationContext | null;
 };
+
+/** How long the "Invitation accepted" state stays on screen before the
+ *  invitee is taken to /login. Long enough to read, short enough not to
+ *  feel stuck; the button below it goes there immediately. */
+const REDIRECT_TO_LOGIN_MS = 2500;
+
+/** One label + one value, the shape every row of the invitation summary
+ *  and the wrong-account panel uses. Local to this file on purpose — it
+ *  has exactly one consumer (CLAUDE.md Section M: start local, promote
+ *  when actually reused). */
+function DetailRow({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div>
+      <dt className="text-xs font-medium tracking-wide text-neutral-500 uppercase">{label}</dt>
+      <dd className="mt-0.5 truncate text-sm font-medium text-neutral-800">{children}</dd>
+    </div>
+  );
+}
 
 /**
  * The invitation's password step — and, deliberately, nothing before it.
@@ -77,6 +95,18 @@ export function AcceptInvitationForm({
         : context?.effectiveStatus === "EXPIRED"
           ? "This invitation has expired. Please ask your administrator to send a new invitation."
           : null;
+
+  // The membership exists and the onboarding session has already been
+  // ended by the time this runs, so /login is the only place left to be.
+  // Hard navigation via replace(), not router.push: the App Router's
+  // client Router Cache would otherwise serve an RSC payload rendered
+  // while that session still existed, and replace() keeps a one-time
+  // invitation URL out of the back button.
+  useEffect(() => {
+    if (!isAccepted) return;
+    const timer = setTimeout(() => window.location.replace("/login"), REDIRECT_TO_LOGIN_MS);
+    return () => clearTimeout(timer);
+  }, [isAccepted]);
 
   /**
    * The way OUT of a wrong-account dead end.
@@ -150,6 +180,10 @@ export function AcceptInvitationForm({
       const result = await acceptInvitationAction(invitationId);
 
       if (!result.success) {
+        // The password IS set. Acceptance is safe to retry: the RPC
+        // creates nothing until it succeeds and is idempotent for the
+        // same person, so the form stays on screen rather than claiming
+        // a success that never happened.
         setFormError(result.error ?? "This invitation could not be accepted.");
         return;
       }
@@ -157,12 +191,13 @@ export function AcceptInvitationForm({
       // The transaction has committed: the membership exists and the
       // invitation is ACCEPTED. Only now does the UI claim success.
       //
-      // End this browser's session before showing that. The invitee just
-      // set a password they have never actually signed in with, and the
-      // session they are holding came from a one-time email link — having
-      // them log in properly once is what proves the password works and
-      // leaves them on the normal authenticated path. scope: "local"
-      // again, so nothing is revoked on any other device.
+      // End this browser's session before showing that. The session the
+      // invitee holds came from a one-time email link and was only ever
+      // the onboarding context for completing the invitation — never an
+      // application session. Logging in properly once is what proves the
+      // new password works and puts them on the normal authenticated
+      // path. scope: "local" again, so nothing is revoked on any other
+      // device.
       try {
         await supabase.auth.signOut({ scope: "local" });
       } catch {
@@ -186,25 +221,21 @@ export function AcceptInvitationForm({
         <MessageBanner tone="success">
           <p className="font-semibold">Invitation accepted</p>
           <p className="mt-0.5">
-            Your account has been successfully created
-            {context?.companyName ? <> for <strong>{context.companyName}</strong></> : null}. Please log in to
-            continue.
+            Your account has been created successfully. Please log in with your email and password.
           </p>
         </MessageBanner>
 
         <button
           type="button"
-          onClick={() => {
-            // Hard navigation, not router.push: the session was just ended,
-            // and the App Router's client Router Cache would otherwise
-            // serve an RSC payload rendered while it still existed.
-            // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- intentional hard navigation, see comment above
-            window.location.href = "/login";
-          }}
+          onClick={() => window.location.replace("/login")}
           className="min-h-11 rounded-full bg-sky-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-sky-700"
         >
           Continue to Log In
         </button>
+
+        <p role="status" className="text-center text-xs text-neutral-500">
+          Taking you to the login page&hellip;
+        </p>
       </div>
     );
   }
@@ -222,18 +253,8 @@ export function AcceptInvitationForm({
         <MessageBanner tone="warning">This invitation was sent to a different email address.</MessageBanner>
 
         <dl className="flex flex-col gap-3 rounded-xl bg-neutral-50 p-4 ring-1 ring-neutral-100">
-          <div>
-            <dt className="text-xs font-medium tracking-wide text-neutral-500 uppercase">Invited address</dt>
-            <dd className="mt-0.5 text-sm font-semibold text-neutral-900">
-              {context.invitedEmailHint ?? "—"}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-xs font-medium tracking-wide text-neutral-500 uppercase">
-              Currently signed in as
-            </dt>
-            <dd className="mt-0.5 truncate text-sm font-medium text-neutral-700">{authenticatedEmail}</dd>
-          </div>
+          <DetailRow label="Invited address">{context.invitedEmailHint ?? "—"}</DetailRow>
+          <DetailRow label="Currently signed in as">{authenticatedEmail}</DetailRow>
         </dl>
 
         <p className="text-sm leading-relaxed text-neutral-600">
@@ -279,29 +300,19 @@ export function AcceptInvitationForm({
     );
   }
 
-  // ---- Set password (the first and only step) -----------------------------
+  // ---- Invitation details + set password (the first and only step) --------
+  // Everything below came from get_invitation_context, which returns it
+  // ONLY to the invited person. Nothing sensitive is exposed: no ids, no
+  // invited_by, nobody else in the organization.
   return (
     <div className="flex flex-col gap-4">
       {context?.matchesCurrentUser ? (
         <dl className="flex flex-col gap-3 rounded-xl bg-neutral-50 p-4 ring-1 ring-neutral-100">
-          <div>
-            <dt className="text-xs font-medium tracking-wide text-neutral-500 uppercase">Invited address</dt>
-            <dd className="mt-0.5 truncate text-sm font-semibold text-neutral-900">{authenticatedEmail}</dd>
-          </div>
-          {context.roleName ? (
-            <div>
-              <dt className="text-xs font-medium tracking-wide text-neutral-500 uppercase">Role</dt>
-              <dd className="mt-0.5 text-sm font-medium text-neutral-700">
-                {formatRoleLabel(context.roleName)}
-              </dd>
-            </div>
-          ) : null}
-          {context.managerName ? (
-            <div>
-              <dt className="text-xs font-medium tracking-wide text-neutral-500 uppercase">Manager</dt>
-              <dd className="mt-0.5 truncate text-sm font-medium text-neutral-700">{context.managerName}</dd>
-            </div>
-          ) : null}
+          {context.invitedFullName ? <DetailRow label="Name">{context.invitedFullName}</DetailRow> : null}
+          {context.companyName ? <DetailRow label="Company">{context.companyName}</DetailRow> : null}
+          {context.roleName ? <DetailRow label="Role">{formatRoleLabel(context.roleName)}</DetailRow> : null}
+          {context.managerName ? <DetailRow label="Manager">{context.managerName}</DetailRow> : null}
+          <DetailRow label="Email">{authenticatedEmail}</DetailRow>
         </dl>
       ) : null}
 
@@ -337,7 +348,7 @@ export function AcceptInvitationForm({
           aria-live="polite"
           className="mt-2 min-h-11 rounded-full bg-sky-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {isSubmitting ? "Setting password..." : "Set Password & Accept Invitation"}
+          {isSubmitting ? "Setting up your account..." : "Set Password"}
         </button>
       </form>
     </div>
