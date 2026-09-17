@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useState, type ReactNode } from "react";
+import { useActionState, useEffect, useRef, useState, type ReactNode } from "react";
 import { useFormStatus } from "react-dom";
 import { Modal } from "@/components/shared/modal";
 import { FormField } from "@/components/shared/form-field";
@@ -73,6 +73,7 @@ export function AddUserDialog({ roles, managerOptions, renderTrigger, onSuccess 
   const [email, setEmail] = useState("");
   const [state, formAction] = useActionState(createInvitationAction, initialInvitationFormState);
   const fieldErrors = state.fieldErrors ?? {};
+  const formRef = useRef<HTMLFormElement>(null);
 
   // Close-on-success using this component's OWN isOpen state — safe to
   // adjust during render (React's documented "adjust state when a prop
@@ -101,6 +102,51 @@ export function AddUserDialog({ roles, managerOptions, renderTrigger, onSuccess 
     // eslint-disable-next-line react-hooks/exhaustive-deps -- onSuccess intentionally excluded: a fresh closure every parent render, and re-running for that alone would re-fire it without state actually changing
   }, [state]);
 
+  /**
+   * Bring the rejected field into view after a failed submit.
+   *
+   * WHY THIS IS NEEDED AT ALL: this form is taller than the modal's
+   * scroll area, so submitting from the bottom (where the button is)
+   * leaves Full Name and Email scrolled out of sight. An inline error
+   * under the Email input is the right place for it, but an error the
+   * admin cannot see is no better than one shown in the wrong place —
+   * the fix has to be both.
+   *
+   * QUERIES role="alert", NOT aria-invalid: every error renderer in this
+   * form emits a role="alert" paragraph (FormField, SelectField and
+   * ManagerSelect alike), whereas ManagerSelect deliberately sets no
+   * aria-invalid — it is a custom combobox where that attribute isn't
+   * valid on the element it would land on. One selector therefore covers
+   * every control type plus the form-level banner, and because
+   * querySelector returns the first match in DOM order, a field error
+   * always wins over the banner (which renders last, above the footer).
+   *
+   * Focus moves to the offending control where there is one, so keyboard
+   * and screen-reader users land on the thing to fix rather than only
+   * seeing it move. preventScroll because scrollIntoView above has
+   * already positioned it — letting focus() scroll again would fight it.
+   */
+  useEffect(() => {
+    if (state.success) return;
+
+    const hasFieldError = Object.keys(state.fieldErrors ?? {}).length > 0;
+    if (!hasFieldError && !state.formError) return;
+
+    const form = formRef.current;
+    if (!form) return;
+
+    const firstError = form.querySelector('[role="alert"]');
+    if (!firstError) return;
+
+    const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    firstError.scrollIntoView({
+      block: "center",
+      behavior: prefersReducedMotion ? "auto" : "smooth",
+    });
+
+    form.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus({ preventScroll: true });
+  }, [state]);
+
   return (
     <>
       {renderTrigger(() => setIsOpen(true))}
@@ -116,7 +162,7 @@ export function AddUserDialog({ roles, managerOptions, renderTrigger, onSuccess 
           }
           onClose={() => setIsOpen(false)}
         >
-          <form action={formAction} className="flex flex-col gap-5">
+          <form ref={formRef} action={formAction} className="flex flex-col gap-5">
             <FormSection icon={<ContactsIcon className="h-3.5 w-3.5" />} title="User Details">
               <FormField
                 label="Full Name"
@@ -173,12 +219,24 @@ export function AddUserDialog({ roles, managerOptions, renderTrigger, onSuccess 
               />
             </FormSection>
 
-            {/* The action returns success + formError together when the
-                invitation was created but the email could not be sent
-                (delivery unconfigured, or the provider rejected it). In
-                that case the dialog closes and the caller surfaces the
-                honest message — this banner is for outright failures,
-                where nothing was created and the form stays open. */}
+            {/* FORM-LEVEL failures ONLY, and that distinction is now
+                enforced upstream: createInvitationAction routes anything
+                attributable to one input into fieldErrors instead (see
+                fieldForDatabaseError), so "User already exists with this
+                email address" renders under the Email field and never
+                reaches this banner. What is left here genuinely belongs
+                to the submission rather than to a field — no permission,
+                or the insert failing for a reason no input can fix — and
+                sitting next to the button that was just pressed is the
+                right place for that.
+
+                The action also returns success + formError together when
+                the invitation WAS created but the email could not be
+                sent (delivery unconfigured, or the provider rejected
+                it). The dialog closes in that case and the caller
+                surfaces the honest message, hence the !state.success
+                guard — this banner is only for outright failures, where
+                nothing was created and the form stays open. */}
             {state.formError && !state.success ? (
               <MessageBanner tone="error">{state.formError}</MessageBanner>
             ) : null}

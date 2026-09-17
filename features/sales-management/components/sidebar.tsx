@@ -44,7 +44,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: "Tasks", icon: TasksIcon, href: "/tasks" },
   { label: "Team", icon: TeamIcon },
   { label: "Forecast", icon: ForecastIcon, href: "/forecast" },
-  { label: "Meeting Notes", icon: MeetingNotesIcon },
+  { label: "Meeting Notes", icon: MeetingNotesIcon, href: "/meeting-notes" },
 ];
 
 const SETTINGS_ITEMS: LinkedNavItem[] = [

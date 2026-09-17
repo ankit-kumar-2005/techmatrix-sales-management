@@ -48,17 +48,25 @@ export async function createTaskAction(_prevState: TaskFormState, formData: Form
     return { fieldErrors: getFieldErrors(parsed.error) };
   }
 
-  const { error } = await supabase.from("tasks").insert({
-    customer_id: membership.customer.id,
-    lead_id: parsed.data.lead_id,
-    subject: parsed.data.subject,
-    description: parsed.data.description ?? null,
-    priority: parsed.data.priority,
-    due_date: parsed.data.due_date,
-    assigned_to: parsed.data.assigned_to,
-    type: parsed.data.type,
-    created_by: user.id,
-  });
+  // .select("id") ADDED so the created task can be reported back in
+  // TaskFormState.taskId. Meeting Notes needs it to link the action item
+  // that produced this task; every other caller ignores it. Nothing else
+  // about this insert changed — same columns, same values, same RLS.
+  const { data: created, error } = await supabase
+    .from("tasks")
+    .insert({
+      customer_id: membership.customer.id,
+      lead_id: parsed.data.lead_id,
+      subject: parsed.data.subject,
+      description: parsed.data.description ?? null,
+      priority: parsed.data.priority,
+      due_date: parsed.data.due_date,
+      assigned_to: parsed.data.assigned_to,
+      type: parsed.data.type,
+      created_by: user.id,
+    })
+    .select("id")
+    .maybeSingle();
 
   if (error) {
     // Never surface raw Postgres error text (constraint names, internal
@@ -71,7 +79,16 @@ export async function createTaskAction(_prevState: TaskFormState, formData: Form
 
   revalidatePath("/tasks");
   revalidatePath("/sales-management");
-  return { success: true };
+  // Also revalidated because a Meeting Notes action item can produce a
+  // task, and its card renders struck-through once task_id is set.
+  revalidatePath("/meeting-notes");
+
+  // taskId is reported but NOT required to be present: if the insert
+  // succeeded and the row somehow came back empty, the task still
+  // exists and this is still a success. Only the Meeting Notes caller
+  // reads it, and it treats a missing id as "created but not linked",
+  // which is recoverable — see MeetingNoteActionItemRow.
+  return { success: true, taskId: created?.id as string | undefined };
 }
 
 /**

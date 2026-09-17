@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isRealIsoDate } from "@/utils/iso-date";
 
 /**
  * `source` has no CHECK constraint in the schema (still a plain nullable
@@ -44,18 +45,46 @@ const optionalDealValue = () =>
     });
 
 /**
- * An empty date input submits "", which means "no expected close date" —
- * normalized to undefined so the action stores a real NULL rather than a
- * blank string, exactly as optionalDealValue does for deal value. NULL
- * is meaningful here ("not forecast yet"), not a missing value to
- * paper over.
+ * A real calendar date in ISO yyyy-mm-dd, or nothing at all.
  *
- * Format is validated, not just non-emptiness: <input type="date">
- * always submits ISO yyyy-mm-dd, but this schema also runs against
- * whatever a crafted request sends, and Postgres would reject a bad
- * value with a raw 22007 rather than a field error. A PAST date is
- * deliberately allowed — a slipped forecast date is a real, common
- * state, and the Forecast chart gives those their own Overdue bucket.
+ * TWO CHECKS, AND BOTH ARE LOAD-BEARING:
+ *
+ *   1. The SHAPE must be exactly yyyy-mm-dd. <input type="date"> always
+ *      submits that regardless of the format the browser DISPLAYS (a
+ *      browser on an en-IN/en-GB locale shows 31-10-2026 for the same
+ *      value it submits as 2026-10-31), so this never rejects anything a
+ *      user picked. It exists for what the form isn't: a crafted
+ *      request, where Postgres would otherwise answer with a raw 22007
+ *      instead of a field error.
+ *
+ *   2. The date must ROUND-TRIP. A shape check alone is not enough,
+ *      because JavaScript does not reject an out-of-range day — it rolls
+ *      it over: new Date("2026-02-30") silently becomes March 2nd, and
+ *      "2026-04-31" becomes May 1st. Neither produces an Invalid Date,
+ *      so a NaN check cannot see them. Comparing the parsed date's own
+ *      y/m/d back against the three numbers that went in is the only
+ *      reliable way to catch a day that doesn't exist in that month —
+ *      and it gets leap years right for free (2024-02-29 passes,
+ *      2100-02-29 does not).
+ *
+ * Parsed with an explicit T00:00:00Z so the check runs in UTC. Without
+ * it the string is treated as local midnight, and getUTCDate() would
+ * then disagree with the input by one day for anyone west of UTC —
+ * turning a correct date into a validation error purely by timezone.
+ *
+ * A PAST date is deliberately allowed: a slipped forecast date is a
+ * real, common state, and the Forecast chart gives those their own
+ * Overdue bucket rather than pretending they can't happen.
+ *
+ * An empty input submits "", which becomes undefined here so the action
+ * stores a real NULL rather than a blank string — NULL is meaningful
+ * ("not forecast yet"), the same reasoning as optionalDealValue.
+ *
+ * isRealIsoDate itself now lives in utils/iso-date.ts — it was defined
+ * here while this was its only consumer, and moved (not copied) once the
+ * Meeting Notes extraction needed to validate model-suggested dates with
+ * exactly the same rules. Its own doc comment carries the full
+ * explanation of both checks.
  */
 const optionalDate = (label: string) =>
   z
@@ -63,12 +92,9 @@ const optionalDate = (label: string) =>
     .trim()
     .optional()
     .transform((value) => (value ? value : undefined))
-    .refine(
-      (value) =>
-        value === undefined ||
-        (/^d{4}-d{2}-d{2}$/.test(value) && !Number.isNaN(new Date(`${value}T00:00:00Z`).getTime())),
-      { message: `${label} must be a valid date.` },
-    );
+    .refine((value) => value === undefined || isRealIsoDate(value), {
+      message: `${label} must be a valid date.`,
+    });
 
 /**
  * No phone-format validation existed anywhere in this app before this

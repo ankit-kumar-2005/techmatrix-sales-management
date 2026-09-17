@@ -76,6 +76,47 @@ type TaskFormFieldsProps = {
     status: string;
   };
   lockedLeadLabel?: string;
+  /**
+   * CREATE-MODE prefill — deliberately NOT defaultValues.
+   *
+   * defaultValues is the edit-mode switch: supplying it adds a Status
+   * control and renders Lead as read-only text instead of the searchable
+   * picker, and it requires an assigned_to. Meeting Notes needs neither
+   * of those things and must not have either: the Lead is the field the
+   * human has to choose, and assigned_to is the field that must never be
+   * guessed on their behalf.
+   *
+   * So this is a separate, narrow prop carrying only the five fields an
+   * extracted action item can legitimately fill in. Every field stays
+   * editable; Lead and Assign are untouched by it.
+   */
+  prefill?: {
+    subject?: string;
+    description?: string | null;
+    priority?: string;
+    due_date?: string | null;
+    type?: string;
+  };
+  /**
+   * The model read a NAME out of the meeting notes, and this is the
+   * closest member of the caller's own visible directory to it.
+   *
+   * It only ever ANNOTATES the matching option in the Assign dropdown —
+   * it is never used as that select's defaultValue. The default stays
+   * the current user, exactly as it is for every other caller. A fuzzy
+   * match is a hint about what the notes said, not a decision about who
+   * owns the work, and quietly pre-selecting one would make a guess
+   * indistinguishable from the user's own choice.
+   */
+  assigneeHint?: {
+    /** The literal name from the source, shown so the user can judge
+     *  the match themselves. */
+    sourceName: string;
+    /** The matched customer_users.id, or null when nothing was close
+     *  enough. Null still renders the hint — "the notes say Rahul, no
+     *  teammate matched" is useful information. */
+    matchedCustomerUserId: string | null;
+  };
 };
 
 export function TaskFormFields({
@@ -85,6 +126,8 @@ export function TaskFormFields({
   defaultLead,
   defaultValues,
   lockedLeadLabel,
+  prefill,
+  assigneeHint,
 }: TaskFormFieldsProps) {
   // Same disambiguation logic the Owner column/picker use for Leads —
   // computed here from the raw assignableUsers array for the same
@@ -101,7 +144,7 @@ export function TaskFormFields({
           required
           variant="filled"
           placeholder="e.g. Call customer regarding proposal"
-          defaultValue={defaultValues?.subject}
+          defaultValue={defaultValues?.subject ?? prefill?.subject}
           error={fieldErrors.subject}
         />
 
@@ -114,7 +157,7 @@ export function TaskFormFields({
             name="description"
             rows={3}
             placeholder="Optional details a teammate would find useful"
-            defaultValue={defaultValues?.description ?? undefined}
+            defaultValue={defaultValues?.description ?? prefill?.description ?? undefined}
             aria-invalid={Boolean(fieldErrors.description)}
             className={`w-full resize-none rounded-lg border bg-neutral-100 px-3.5 py-2.5 text-sm text-neutral-900 outline-none transition-all duration-200 focus:border-sky-500 focus:bg-white focus:ring-2 focus:ring-sky-500/30 ${
               fieldErrors.description ? "border-red-400" : "border-transparent"
@@ -159,7 +202,7 @@ export function TaskFormFields({
           id="task-type"
           name="type"
           required
-          defaultValue={defaultValues?.type ?? "Other"}
+          defaultValue={defaultValues?.type ?? prefill?.type ?? "Other"}
           error={fieldErrors.type}
         >
           {TASK_TYPES.map((type) => (
@@ -195,7 +238,7 @@ export function TaskFormFields({
             type="date"
             required
             variant="filled"
-            defaultValue={defaultValues?.due_date}
+            defaultValue={defaultValues?.due_date ?? prefill?.due_date ?? undefined}
             error={fieldErrors.due_date}
           />
 
@@ -204,7 +247,7 @@ export function TaskFormFields({
             id="task-priority"
             name="priority"
             required
-            defaultValue={defaultValues?.priority ?? "Medium"}
+            defaultValue={defaultValues?.priority ?? prefill?.priority ?? "Medium"}
             error={fieldErrors.priority}
           >
             {TASK_PRIORITIES.map((priority) => (
@@ -217,6 +260,10 @@ export function TaskFormFields({
       </FormSection>
 
       <FormSection icon={<UserPlusIcon className="h-3.5 w-3.5" />} title="Assignment">
+        {/* defaultValue is STILL the current user even when assigneeHint
+            is present. The hint annotates the matching option and
+            explains itself in helperText; it never becomes the
+            selection. See the assigneeHint prop comment for why. */}
         <SelectField
           label="Assign"
           id="task-assigned-to"
@@ -224,13 +271,23 @@ export function TaskFormFields({
           required
           defaultValue={defaultValues?.assigned_to ?? currentUserCustomerUserId}
           error={fieldErrors.assigned_to}
-          helperText="Only teammates within your reporting hierarchy are listed."
+          helperText={
+            assigneeHint
+              ? assigneeHint.matchedCustomerUserId
+                ? `The notes mention "${assigneeHint.sourceName}" — the closest teammate is marked below. Confirm or change it.`
+                : `The notes mention "${assigneeHint.sourceName}", which didn't match anyone in your hierarchy. Choose an assignee.`
+              : "Only teammates within your reporting hierarchy are listed."
+          }
         >
-          {assignableUsers.map((assignee) => (
-            <option key={assignee.customer_user_id} value={assignee.customer_user_id}>
-              {assigneeLabelById.get(assignee.customer_user_id) ?? assignee.email} — {assignee.role_name}
-            </option>
-          ))}
+          {assignableUsers.map((assignee) => {
+            const isSuggested = assigneeHint?.matchedCustomerUserId === assignee.customer_user_id;
+            return (
+              <option key={assignee.customer_user_id} value={assignee.customer_user_id}>
+                {assigneeLabelById.get(assignee.customer_user_id) ?? assignee.email} — {assignee.role_name}
+                {isSuggested ? "  ·  suggested by the notes" : ""}
+              </option>
+            );
+          })}
         </SelectField>
       </FormSection>
     </>

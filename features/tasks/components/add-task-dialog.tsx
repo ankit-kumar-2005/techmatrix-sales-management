@@ -39,7 +39,19 @@ type AddTaskDialogProps = {
    *  the new task shows up without the user navigating away and back.
    *  Optional so this dialog still works if a future consumer has no
    *  such list to refresh. */
-  onSuccess?: () => void;
+  onSuccess?: (taskId: string | undefined) => void;
+  /** Create-mode prefill, forwarded to TaskFormFields. Carries only the
+   *  five fields an extracted action item can fill; Lead and Assign are
+   *  untouched by it. NOT defaultValues — see TaskFormFields own prop
+   *  comment for why that distinction matters. */
+  prefill?: React.ComponentProps<typeof TaskFormFields>["prefill"];
+  /** Annotates the matching option in the Assign picker. Never becomes
+   *  its selection. */
+  assigneeHint?: React.ComponentProps<typeof TaskFormFields>["assigneeHint"];
+  /** Overrides the dialog subtitle. The default names a lead, which is
+   *  wrong when the dialog was opened from a meeting note that has no
+   *  lead attached yet. */
+  subtitle?: string;
 };
 
 /**
@@ -58,6 +70,9 @@ export function AddTaskDialog({
   title = "New Task",
   renderTrigger,
   onSuccess,
+  prefill,
+  assigneeHint,
+  subtitle = "Create a follow-up action for this lead.",
 }: AddTaskDialogProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [showSuccessToast, setShowSuccessToast] = useState(false);
@@ -98,7 +113,11 @@ export function AddTaskDialog({
   // component's own state).
   useEffect(() => {
     if (state.success) {
-      onSuccess?.();
+      // The created task id is passed through so a caller that has to
+      // record WHICH task was created can. Callers that do not care
+      // (the Tasks page, Edit Lead, the Pipeline board) declare a
+      // zero-argument callback and are unaffected.
+      onSuccess?.(state.taskId);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- onSuccess intentionally excluded: a fresh closure every parent render, re-running this effect for that alone would re-fire onSuccess without state actually changing
   }, [state]);
@@ -110,7 +129,7 @@ export function AddTaskDialog({
       {isOpen ? (
         <Modal
           title={title}
-          subtitle="Create a follow-up action for this lead."
+          subtitle={subtitle}
           icon={
             <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-sky-50 to-blue-50 text-sky-600 ring-1 ring-sky-100">
               <TasksIcon className="h-5 w-5" />
@@ -124,6 +143,8 @@ export function AddTaskDialog({
               currentUserCustomerUserId={currentUserCustomerUserId}
               fieldErrors={fieldErrors}
               defaultLead={defaultLead}
+              prefill={prefill}
+              assigneeHint={assigneeHint}
             />
 
             {state.formError ? <MessageBanner tone="error">{state.formError}</MessageBanner> : null}

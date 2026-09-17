@@ -73,6 +73,43 @@ function translateDatabaseError(message: string): string {
 }
 
 /**
+ * Which FORM FIELD a database rejection is actually about, or null when
+ * it isn't about any single field.
+ *
+ * WHY THIS IS SEPARATE from translateDatabaseError rather than folded
+ * into it: that function has four callers, and three of them
+ * (resend/cancel/accept) return an InvitationActionResult that has no
+ * field concept at all — only a message. Widening its return type would
+ * force all three to unpack something they cannot use. This keeps one
+ * source of truth for the message TEXT and adds routing beside it.
+ *
+ * The keys returned here are the form's own field names, so they land in
+ * fieldErrors under exactly the key the matching input reads
+ * (AddUserDialog passes fieldErrors.email to the Email FormField, etc.).
+ * Get one wrong and the error silently renders nowhere, which is why
+ * these are the literal column/input names and not a separate
+ * vocabulary.
+ */
+function fieldForDatabaseError(message: string): "email" | "role_id" | "manager_id" | null {
+  if (
+    message.includes("already a member of this customer") ||
+    message.includes("customer_user_invitations_unique_pending_email_per_customer")
+  ) {
+    return "email";
+  }
+  if (message.includes("manager must be an active member")) {
+    return "manager_id";
+  }
+  if (message.includes("role is not available") || message.includes("role on this invitation")) {
+    return "role_id";
+  }
+  // Permission failures, connection failures, "unable to create" — real
+  // failures that belong to the submission rather than to one input, and
+  // are correctly shown as a form-level banner.
+  return null;
+}
+
+/**
  * ADMIN-role-gated exactly like createCatalogItemAction: auth check,
  * membership check, role check. That role check is the UX layer only —
  * RLS ("admins can create invitations for their customer", via the
@@ -138,8 +175,12 @@ export async function createInvitationAction(
     parsed.data.email,
   );
   if (existingPending) {
+    // A FIELD error, not a form-level one: the problem is the address in
+    // the Email input, so it renders under that input rather than as a
+    // banner above the footer, where it sat far from — and gave no clue
+    // about — the field the admin actually has to change.
     return {
-      formError: "An invitation is already pending for this email address. Resend it instead.",
+      fieldErrors: { email: "An invitation is already pending for this email address. Resend it instead." },
       alreadyPending: { invitationId: existingPending.id },
     };
   }
@@ -160,7 +201,13 @@ export async function createInvitationAction(
     .maybeSingle();
 
   if (error) {
-    return { formError: translateDatabaseError(error.message) };
+    // One message, routed by what it is about. "User already exists with
+    // this email address" is a statement about the Email input and
+    // belongs under it; "you do not have permission" is about the
+    // submission and belongs in the banner.
+    const message = translateDatabaseError(error.message);
+    const field = fieldForDatabaseError(error.message);
+    return field ? { fieldErrors: { [field]: message } } : { formError: message };
   }
   if (!created) {
     return { formError: "Unable to create this invitation. Please try again." };
