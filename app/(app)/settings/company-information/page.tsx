@@ -1,6 +1,9 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { getCurrentMembership } from "@/features/customers/lib/get-current-membership";
+import {
+  getCurrentMembership,
+  getNoMembershipRedirect,
+} from "@/features/customers/lib/get-current-membership";
 import { CompanyInformationForm } from "@/features/customers/components/company-information-form";
 import { LeadStageSettings } from "@/features/leads/components/lead-stage-settings";
 import { getLeadStagesForCustomer } from "@/features/leads/lib/get-lead-stages";
@@ -17,7 +20,10 @@ export default async function CompanyInformationPage() {
 
   const membership = await getCurrentMembership(supabase, user.id);
   if (!membership) {
-    redirect("/signup");
+    // /inactive for a DEACTIVATED member, /signup only for someone with
+    // no membership row at all. One shared decision so this guard and
+    // the (app) layout's cannot disagree — see getNoMembershipRedirect.
+    redirect(await getNoMembershipRedirect(supabase, user.id));
   }
 
   const stages = await getLeadStagesForCustomer(supabase, membership.customer.id);

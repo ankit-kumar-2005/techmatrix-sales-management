@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { newPasswordSchema } from "../schemas";
 import { getFieldErrors } from "../lib/get-field-errors";
@@ -20,15 +19,16 @@ type NewPasswordFormProps = {
 };
 
 /**
- * Shared by /set-password (first password after signup verification) and
- * /reset-password (forgot-password recovery) — same fields, same
- * validation, same supabase.auth.updateUser() call. Both end the same
- * way: sign out the session that came from the email link, then send the
+ * Used by /reset-password (forgot-password recovery). Sets the password,
+ * signs out the session that came from the email link, then sends the
  * user to /login to authenticate with the password they just chose,
  * rather than silently continuing an already-authenticated session.
+ *
+ * (/set-password has its own SetPasswordForm — it does not share this
+ * one, because finishing signup also has to create the customer. This
+ * comment used to claim both pages shared this component; they don't.)
  */
 export function NewPasswordForm({ submitLabel, submittingLabel, successMessageKey }: NewPasswordFormProps) {
-  const router = useRouter();
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -55,17 +55,48 @@ export function NewPasswordForm({ submitLabel, submittingLabel, successMessageKe
 
       if (error) {
         setFormError(mapAuthErrorMessage(error.message));
+        // Re-enabled explicitly rather than by a finally block: the
+        // success path below deliberately leaves the button disabled
+        // while the browser navigates away, so there is no single exit
+        // that is right for both.
+        setIsSubmitting(false);
         return;
       }
 
       await supabase.auth.signOut();
-      router.push(`/login?message=${successMessageKey}`);
-      router.refresh();
+
+      // HARD NAVIGATION, and replace() rather than push() — the same
+      // move AcceptInvitationForm and LoginForm already make, for the
+      // same two reasons plus one specific to this page.
+      //
+      // 1. The App Router's client Router Cache still holds RSC payloads
+      //    rendered while the recovery session existed. A soft push
+      //    reuses them, which is precisely the failure LoginForm's own
+      //    comment records as having looked like "login redirects back
+      //    to signup" when the account was fine.
+      //
+      // 2. router.refresh() used to fire on the line after router.push().
+      //    push() does not settle before the next statement runs, so the
+      //    refresh could land on /reset-password instead of /login — and
+      //    /reset-password's server guard, now that signOut() has just
+      //    cleared the session, redirects to /forgot-password. A
+      //    successful reset could therefore end on "Reset your password"
+      //    again instead of the login success banner.
+      //
+      // 3. replace() keeps the spent one-time recovery URL out of the
+      //    back button, which would otherwise return to a page that can
+      //    only bounce to /forgot-password.
+      //
+      // No setIsSubmitting(false) on this path on purpose: the button
+      // stays disabled while the browser navigates away, so a
+      // now-signed-out session cannot be submitted against twice.
+      window.location.replace(`/login?message=${successMessageKey}`);
+      return;
     } catch {
       setFormError("Something went wrong. Please try again.");
-    } finally {
-      setIsSubmitting(false);
     }
+
+    setIsSubmitting(false);
   }
 
   return (

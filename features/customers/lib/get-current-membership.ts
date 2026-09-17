@@ -113,3 +113,111 @@ export const getCurrentMembership = cache(async function getCurrentMembership(
     isPrimaryAdmin: customer.created_by === userId,
   };
 });
+
+/**
+ * Why a membership is unusable, for the one caller that has to tell the
+ * two reasons apart.
+ *
+ *   "active"   — a usable Active membership exists.
+ *   "inactive" — this user IS a member of a customer, but that membership
+ *                was deactivated. They have an account; they need an
+ *                admin to reactivate them.
+ *   "none"     — no customer_users row at all. Either a signup that never
+ *                reached /set-password, or an auth user created outside
+ *                the app (e.g. straight from the Supabase dashboard).
+ *                This one genuinely still has registration to finish.
+ */
+export type MembershipState = "active" | "inactive" | "none";
+
+/**
+ * THE BUG THIS EXISTS TO FIX — "correct password, and I land on /signup".
+ *
+ * getCurrentMembership() filters `.eq("status", "Active")`, so it returns
+ * null for BOTH of the failure states above. Its callers cannot tell them
+ * apart, and every one of them treats null as "restart signup":
+ *
+ *   app/(app)/layout.tsx      if (!membership) redirect("/signup")
+ *
+ * For a DEACTIVATED member that is wrong twice over. It is the wrong
+ * page — they already have an account, so "Create your account" is a
+ * dead end that tells them nothing about what actually happened. And it
+ * is a dangerous page: /signup leads to /set-password, whose form calls
+ * create_customer_with_admin(), which would manufacture a SECOND
+ * customer for somebody who is already a member of one.
+ *
+ * It also made app/(app)/layout.tsx's own
+ *   if (membership.membership.status !== "Active") redirect("/inactive")
+ * unreachable — a non-null membership is Active by construction — so
+ * /inactive could never render, and the Inactive case fell through to
+ * /signup instead. That page's whole reason to exist was dead code.
+ *
+ * NO EXTRA QUERY ON THE HAPPY PATH. getCurrentMembership is cache()d on
+ * (supabase client, userId), and the one caller here calls it too — so
+ * this await returns that already-resolved result rather than re-running
+ * it. The second query below only ever runs for a user who is ALREADY
+ * being redirected away, which is the one moment the extra round trip is
+ * worth spending to send them somewhere truthful.
+ *
+ * Reads customer_users ONLY — deliberately no customers/roles embed.
+ * customer_users' SELECT policy is
+ *   using (user_id = auth.uid() or public.is_customer_member(customer_id))
+ * and that FIRST clause carries no status condition, so a user can always
+ * read their own rows however deactivated they are. The `customers`
+ * policy is not so kind (is_customer_member() requires Active), which is
+ * exactly why an embed here would come back null and put us right back to
+ * "can't tell inactive from none".
+ *
+ * Bounded to one row: customer_users_one_active_membership_per_user caps
+ * Active rows at one per user, but INACTIVE rows are uncapped (a user can
+ * be deactivated by several customers over time). Any one of them answers
+ * the only question being asked.
+ */
+export const getMembershipState = cache(async function getMembershipState(
+  supabase: SupabaseClient,
+  userId: string,
+): Promise<MembershipState> {
+  if (await getCurrentMembership(supabase, userId)) {
+    return "active";
+  }
+
+  const { data, error } = await supabase
+    .from("customer_users")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("status", "Inactive")
+    .limit(1)
+    .maybeSingle();
+
+  // An error here is treated as "none" on purpose: this function decides
+  // where to send somebody who is already being redirected, and the
+  // pre-existing destination is the safe default. It must never be able
+  // to turn a read failure into access.
+  if (error || !data) {
+    return "none";
+  }
+
+  return "inactive";
+});
+
+/**
+ * Where to send a user whose getCurrentMembership() came back null.
+ *
+ * ONE decision, called from every guard, so they cannot disagree.
+ * app/(app)/layout.tsx and each (app) page check membership
+ * independently (defense in depth, CLAUDE.md Section H) — and a layout
+ * and its page render in the same pass, so if the layout redirected a
+ * deactivated member to /inactive while the page underneath still said
+ * /signup, which one the request ended on would come down to whose
+ * redirect() threw first. That is not something to leave to a race when
+ * one of the two answers is the bug being fixed.
+ *
+ * cache()d over the same (client, userId) pair as everything else here,
+ * so all of those guards resolving in one request share a single answer
+ * and a single query.
+ */
+export const getNoMembershipRedirect = cache(async function getNoMembershipRedirect(
+  supabase: SupabaseClient,
+  userId: string,
+): Promise<"/inactive" | "/signup"> {
+  return (await getMembershipState(supabase, userId)) === "inactive" ? "/inactive" : "/signup";
+});

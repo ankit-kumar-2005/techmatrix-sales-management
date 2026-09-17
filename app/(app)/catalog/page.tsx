@@ -1,6 +1,10 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { getAuthenticatedUser, getCurrentMembership } from "@/features/customers/lib/get-current-membership";
+import {
+  getAuthenticatedUser,
+  getCurrentMembership,
+  getNoMembershipRedirect,
+} from "@/features/customers/lib/get-current-membership";
 import { getCatalogItemsPage, getDistinctCatalogCategories } from "@/features/catalog/lib/get-catalog-items";
 import { CatalogPageClient } from "@/features/catalog/components/catalog-page-client";
 
@@ -41,7 +45,10 @@ export default async function CatalogPage() {
 
   const membership = await getCurrentMembership(supabase, user.id);
   if (!membership) {
-    redirect("/signup");
+    // /inactive for a DEACTIVATED member, /signup only for someone with
+    // no membership row at all. One shared decision so this guard and
+    // the (app) layout's cannot disagree — see getNoMembershipRedirect.
+    redirect(await getNoMembershipRedirect(supabase, user.id));
   }
 
   // RLS ("customer members can view their customer's catalog items")

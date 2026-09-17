@@ -1,6 +1,10 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { getAuthenticatedUser, getCurrentMembership } from "@/features/customers/lib/get-current-membership";
+import {
+  getAuthenticatedUser,
+  getCurrentMembership,
+  getNoMembershipRedirect,
+} from "@/features/customers/lib/get-current-membership";
 import { getTasksBucketPage, type TaskDueBucket, type TasksBucketPage } from "@/features/tasks/lib/get-tasks";
 import { getVisibleTeamDirectory } from "@/features/leads/lib/get-team-directory";
 import { TasksPageClient } from "@/features/tasks/components/tasks-page-client";
@@ -85,7 +89,10 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
 
   const membership = await getCurrentMembership(supabase, user.id);
   if (!membership) {
-    redirect("/signup");
+    // /inactive for a DEACTIVATED member, /signup only for someone with
+    // no membership row at all. One shared decision so this guard and
+    // the (app) layout's cannot disagree — see getNoMembershipRedirect.
+    redirect(await getNoMembershipRedirect(supabase, user.id));
   }
 
   const params = await searchParams;

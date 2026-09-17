@@ -1,6 +1,10 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { getAuthenticatedUser, getCurrentMembership } from "@/features/customers/lib/get-current-membership";
+import {
+  getAuthenticatedUser,
+  getCurrentMembership,
+  getNoMembershipRedirect,
+} from "@/features/customers/lib/get-current-membership";
 import { getContactsPage } from "@/features/contacts/lib/get-contacts";
 import { getVisibleTeamDirectory } from "@/features/leads/lib/get-team-directory";
 import { ContactsPageClient } from "@/features/contacts/components/contacts-page-client";
@@ -49,7 +53,10 @@ export default async function ContactsPage({ searchParams }: ContactsPageProps) 
 
   const membership = await getCurrentMembership(supabase, user.id);
   if (!membership) {
-    redirect("/signup");
+    // /inactive for a DEACTIVATED member, /signup only for someone with
+    // no membership row at all. One shared decision so this guard and
+    // the (app) layout's cannot disagree — see getNoMembershipRedirect.
+    redirect(await getNoMembershipRedirect(supabase, user.id));
   }
 
   const params = await searchParams;

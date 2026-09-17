@@ -1,7 +1,10 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { getCurrentMembership } from "@/features/customers/lib/get-current-membership";
+import {
+  getCurrentMembership,
+  getNoMembershipRedirect,
+} from "@/features/customers/lib/get-current-membership";
 import { formatRoleLabel } from "@/features/customers/lib/role-labels";
 import { getTeamDirectory } from "@/features/leads/lib/get-team-directory";
 import { AvatarUpload } from "@/features/customers/components/avatar-upload";
@@ -42,7 +45,10 @@ export default async function ProfilePage() {
 
   const membership = await getCurrentMembership(supabase, user.id);
   if (!membership) {
-    redirect("/signup");
+    // /inactive for a DEACTIVATED member, /signup only for someone with
+    // no membership row at all. One shared decision so this guard and
+    // the (app) layout's cannot disagree — see getNoMembershipRedirect.
+    redirect(await getNoMembershipRedirect(supabase, user.id));
   }
 
   const directory = membership.membership.manager_id ? await getTeamDirectory(supabase) : [];

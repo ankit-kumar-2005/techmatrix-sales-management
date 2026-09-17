@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { getCurrentMembership } from "@/features/customers/lib/get-current-membership";
+import { getMembershipState } from "@/features/customers/lib/get-current-membership";
 import { LogoutButton } from "@/features/auth/components/logout-button";
 
 /**
@@ -25,12 +25,18 @@ export default async function InactivePage() {
     redirect("/login");
   }
 
-  const membership = await getCurrentMembership(supabase, user.id);
-  if (!membership) {
-    redirect("/signup");
-  }
-  if (membership.membership.status === "Active") {
+  // getMembershipState, not getCurrentMembership: the latter filters to
+  // status = 'Active' and so returns null for the exact person this page
+  // exists for, which sent them to /signup from here too. This page could
+  // therefore never render — an Inactive member hit the !membership
+  // branch and bounced to "Create your account". See getMembershipState's
+  // own comment.
+  const state = await getMembershipState(supabase, user.id);
+  if (state === "active") {
     redirect("/sales-management");
+  }
+  if (state === "none") {
+    redirect("/signup");
   }
 
   return (
