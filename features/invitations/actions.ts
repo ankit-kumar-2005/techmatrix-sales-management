@@ -4,7 +4,10 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getFieldErrors } from "@/features/auth/lib/get-field-errors";
-import { getCurrentMembership } from "@/features/customers/lib/get-current-membership";
+import {
+  getCurrentMembership,
+  getNoMembershipRedirect,
+} from "@/features/customers/lib/get-current-membership";
 import { createInvitationSchema } from "./schemas";
 import {
   findPendingInvitationByEmail,
@@ -158,7 +161,7 @@ export async function createInvitationAction(
 
   const membership = await getCurrentMembership(supabase, user.id);
   if (!membership) {
-    redirect("/signup");
+    redirect(await getNoMembershipRedirect(supabase, user.id));
   }
   if (membership.role !== "ADMIN") {
     return { formError: "You do not have permission to perform this action." };
@@ -268,7 +271,7 @@ export async function resendInvitationAction(invitationId: string): Promise<Invi
 
   const membership = await getCurrentMembership(supabase, user.id);
   if (!membership) {
-    redirect("/signup");
+    redirect(await getNoMembershipRedirect(supabase, user.id));
   }
   if (membership.role !== "ADMIN") {
     return { success: false, error: "You do not have permission to perform this action." };
@@ -374,7 +377,7 @@ export async function cancelInvitationAction(invitationId: string): Promise<Invi
 
   const membership = await getCurrentMembership(supabase, user.id);
   if (!membership) {
-    redirect("/signup");
+    redirect(await getNoMembershipRedirect(supabase, user.id));
   }
   if (membership.role !== "ADMIN") {
     return { success: false, error: "You do not have permission to perform this action." };
@@ -422,7 +425,7 @@ export async function getInvitationsPageAction(params: InvitationsPageParams): P
 
   const membership = await getCurrentMembership(supabase, user.id);
   if (!membership) {
-    redirect("/signup");
+    redirect(await getNoMembershipRedirect(supabase, user.id));
   }
   if (membership.role !== "ADMIN") {
     return { invitations: [], totalCount: 0 };

@@ -4,7 +4,10 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getFieldErrors } from "@/features/auth/lib/get-field-errors";
-import { getCurrentMembership } from "@/features/customers/lib/get-current-membership";
+import {
+  getCurrentMembership,
+  getNoMembershipRedirect,
+} from "@/features/customers/lib/get-current-membership";
 import { createTaskSchema, updateTaskSchema } from "./schemas";
 import { getTasksBucketPage, type TasksBucketPage, type TasksBucketPageParams } from "./lib/get-tasks";
 import type { TaskFormState } from "./form-state";
@@ -40,7 +43,7 @@ export async function createTaskAction(_prevState: TaskFormState, formData: Form
 
   const membership = await getCurrentMembership(supabase, user.id);
   if (!membership) {
-    redirect("/signup");
+    redirect(await getNoMembershipRedirect(supabase, user.id));
   }
 
   const parsed = createTaskSchema.safeParse(Object.fromEntries(formData));
@@ -124,7 +127,7 @@ export async function updateTaskAction(_prevState: TaskFormState, formData: Form
 
   const membership = await getCurrentMembership(supabase, user.id);
   if (!membership) {
-    redirect("/signup");
+    redirect(await getNoMembershipRedirect(supabase, user.id));
   }
 
   const parsed = updateTaskSchema.safeParse(Object.fromEntries(formData));
@@ -191,7 +194,7 @@ export async function completeTaskAction(taskId: string): Promise<CompleteTaskRe
 
   const membership = await getCurrentMembership(supabase, user.id);
   if (!membership) {
-    redirect("/signup");
+    redirect(await getNoMembershipRedirect(supabase, user.id));
   }
 
   const { data, error } = await supabase
@@ -233,7 +236,7 @@ export async function getTasksBucketPageAction(params: TasksBucketPageParams): P
 
   const membership = await getCurrentMembership(supabase, user.id);
   if (!membership) {
-    redirect("/signup");
+    redirect(await getNoMembershipRedirect(supabase, user.id));
   }
 
   return getTasksBucketPage(supabase, membership.customer.id, params);

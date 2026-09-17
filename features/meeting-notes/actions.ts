@@ -3,7 +3,11 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { getAuthenticatedUser, getCurrentMembership } from "@/features/customers/lib/get-current-membership";
+import {
+  getAuthenticatedUser,
+  getCurrentMembership,
+  getNoMembershipRedirect,
+} from "@/features/customers/lib/get-current-membership";
 import { getFieldErrors } from "@/features/auth/lib/get-field-errors";
 import { analyzeModeSchema, analyzeTextSchema, validateImageUpload } from "./schemas";
 import { extractMeetingNotes, type ExtractionSource } from "./lib/openrouter";
@@ -97,7 +101,7 @@ export async function extractMeetingNotesAction(
 
   const membership = await getCurrentMembership(supabase, user.id);
   if (!membership) {
-    redirect("/signup");
+    redirect(await getNoMembershipRedirect(supabase, user.id));
   }
 
   const mode = analyzeModeSchema.safeParse(formData.get("mode"));
@@ -236,7 +240,7 @@ export async function linkActionItemToTaskAction(
 
   const membership = await getCurrentMembership(supabase, user.id);
   if (!membership) {
-    redirect("/signup");
+    redirect(await getNoMembershipRedirect(supabase, user.id));
   }
 
   const { data: updated, error } = await supabase

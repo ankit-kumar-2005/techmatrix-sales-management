@@ -4,7 +4,10 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getFieldErrors } from "@/features/auth/lib/get-field-errors";
-import { getCurrentMembership } from "@/features/customers/lib/get-current-membership";
+import {
+  getCurrentMembership,
+  getNoMembershipRedirect,
+} from "@/features/customers/lib/get-current-membership";
 import { createCatalogItemSchema, updateCatalogItemSchema } from "./schemas";
 import { getCatalogItemsPage, type CatalogItemsPage, type CatalogItemsPageParams } from "./lib/get-catalog-items";
 import type { CatalogItemFormState } from "./form-state";
@@ -41,7 +44,7 @@ export async function createCatalogItemAction(
 
   const membership = await getCurrentMembership(supabase, user.id);
   if (!membership) {
-    redirect("/signup");
+    redirect(await getNoMembershipRedirect(supabase, user.id));
   }
   if (membership.role !== "ADMIN") {
     return { formError: "You do not have permission to perform this action." };
@@ -97,7 +100,7 @@ export async function updateCatalogItemAction(
 
   const membership = await getCurrentMembership(supabase, user.id);
   if (!membership) {
-    redirect("/signup");
+    redirect(await getNoMembershipRedirect(supabase, user.id));
   }
   if (membership.role !== "ADMIN") {
     return { formError: "You do not have permission to perform this action." };
@@ -167,7 +170,7 @@ export async function setCatalogItemStatusAction(
 
   const membership = await getCurrentMembership(supabase, user.id);
   if (!membership) {
-    redirect("/signup");
+    redirect(await getNoMembershipRedirect(supabase, user.id));
   }
   if (membership.role !== "ADMIN") {
     return { success: false, error: "You do not have permission to perform this action." };
@@ -214,7 +217,7 @@ export async function getCatalogItemsPageAction(params: CatalogItemsPageParams):
 
   const membership = await getCurrentMembership(supabase, user.id);
   if (!membership) {
-    redirect("/signup");
+    redirect(await getNoMembershipRedirect(supabase, user.id));
   }
 
   return getCatalogItemsPage(supabase, membership.customer.id, params);

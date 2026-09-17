@@ -4,7 +4,10 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getFieldErrors } from "@/features/auth/lib/get-field-errors";
 import { updateCustomerSchema } from "./schemas";
-import { getCurrentMembership } from "./lib/get-current-membership";
+import {
+  getCurrentMembership,
+  getNoMembershipRedirect,
+} from "./lib/get-current-membership";
 import type { CustomerFormState } from "./form-state";
 
 /**
@@ -28,7 +31,7 @@ export async function updateCustomerAction(
 
   const current = await getCurrentMembership(supabase, user.id);
   if (!current) {
-    redirect("/signup");
+    redirect(await getNoMembershipRedirect(supabase, user.id));
   }
   if (!current.isPrimaryAdmin) {
     return { formError: "Only the Primary Admin can edit company information." };

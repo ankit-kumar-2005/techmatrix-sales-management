@@ -4,7 +4,10 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getFieldErrors } from "@/features/auth/lib/get-field-errors";
-import { getCurrentMembership } from "@/features/customers/lib/get-current-membership";
+import {
+  getCurrentMembership,
+  getNoMembershipRedirect,
+} from "@/features/customers/lib/get-current-membership";
 import { createContactSchema, updateContactSchema } from "./schemas";
 import {
   getContactsPage,
@@ -49,7 +52,7 @@ export async function createContactAction(_prevState: ContactFormState, formData
 
   const membership = await getCurrentMembership(supabase, user.id);
   if (!membership) {
-    redirect("/signup");
+    redirect(await getNoMembershipRedirect(supabase, user.id));
   }
 
   const parsed = createContactSchema.safeParse(Object.fromEntries(formData));
@@ -115,7 +118,7 @@ export async function updateContactAction(_prevState: ContactFormState, formData
 
   const membership = await getCurrentMembership(supabase, user.id);
   if (!membership) {
-    redirect("/signup");
+    redirect(await getNoMembershipRedirect(supabase, user.id));
   }
 
   const parsed = updateContactSchema.safeParse(Object.fromEntries(formData));
@@ -177,7 +180,7 @@ export async function getContactsPageAction(params: ContactsPageParams): Promise
 
   const membership = await getCurrentMembership(supabase, user.id);
   if (!membership) {
-    redirect("/signup");
+    redirect(await getNoMembershipRedirect(supabase, user.id));
   }
 
   return getContactsPage(supabase, membership.customer.id, params);
@@ -203,7 +206,7 @@ export async function getPossibleDuplicatesAction(): Promise<DuplicatePair[]> {
 
   const membership = await getCurrentMembership(supabase, user.id);
   if (!membership) {
-    redirect("/signup");
+    redirect(await getNoMembershipRedirect(supabase, user.id));
   }
 
   const [candidates, dismissedPairs] = await Promise.all([
@@ -241,7 +244,7 @@ export async function dismissDuplicateAction(contactIdA: string, contactIdB: str
 
   const membership = await getCurrentMembership(supabase, user.id);
   if (!membership) {
-    redirect("/signup");
+    redirect(await getNoMembershipRedirect(supabase, user.id));
   }
 
   const [idA, idB] = [contactIdA, contactIdB].sort();

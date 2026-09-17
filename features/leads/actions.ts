@@ -4,7 +4,10 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getFieldErrors } from "@/features/auth/lib/get-field-errors";
-import { getCurrentMembership } from "@/features/customers/lib/get-current-membership";
+import {
+  getCurrentMembership,
+  getNoMembershipRedirect,
+} from "@/features/customers/lib/get-current-membership";
 import { searchLeadsForPicker, type LeadSearchResult } from "./lib/search-leads";
 import { getLeadLabelsByIds, type LeadLabel } from "./lib/get-lead-labels";
 import {
@@ -34,7 +37,7 @@ export async function searchLeadsAction(query: string): Promise<LeadSearchResult
 
   const membership = await getCurrentMembership(supabase, user.id);
   if (!membership) {
-    redirect("/signup");
+    redirect(await getNoMembershipRedirect(supabase, user.id));
   }
 
   return searchLeadsForPicker(supabase, membership.customer.id, query);
@@ -60,7 +63,7 @@ export async function getLeadLabelsAction(leadIds: string[]): Promise<LeadLabel[
 
   const membership = await getCurrentMembership(supabase, user.id);
   if (!membership) {
-    redirect("/signup");
+    redirect(await getNoMembershipRedirect(supabase, user.id));
   }
 
   return getLeadLabelsByIds(supabase, membership.customer.id, leadIds);
@@ -115,7 +118,7 @@ export async function createLeadAction(
 
   const membership = await getCurrentMembership(supabase, user.id);
   if (!membership) {
-    redirect("/signup");
+    redirect(await getNoMembershipRedirect(supabase, user.id));
   }
 
   const raw = Object.fromEntries(formData);
@@ -216,7 +219,7 @@ export async function updateLeadAction(
 
   const membership = await getCurrentMembership(supabase, user.id);
   if (!membership) {
-    redirect("/signup");
+    redirect(await getNoMembershipRedirect(supabase, user.id));
   }
 
   const raw = Object.fromEntries(formData);
@@ -382,7 +385,7 @@ export async function createLeadStageAction(
 
   const membership = await getCurrentMembership(supabase, user.id);
   if (!membership) {
-    redirect("/signup");
+    redirect(await getNoMembershipRedirect(supabase, user.id));
   }
   if (membership.role !== "ADMIN") {
     return { formError: "Only an admin can configure lead stages." };
@@ -451,7 +454,7 @@ export async function updateLeadStageAction(
 
   const membership = await getCurrentMembership(supabase, user.id);
   if (!membership) {
-    redirect("/signup");
+    redirect(await getNoMembershipRedirect(supabase, user.id));
   }
   if (membership.role !== "ADMIN") {
     return { formError: "Only an admin can configure lead stages." };
@@ -514,7 +517,7 @@ export async function setLeadStageStatusAction(stageId: string, status: "Active"
   if (!user) redirect("/login");
 
   const membership = await getCurrentMembership(supabase, user.id);
-  if (!membership) redirect("/signup");
+  if (!membership) redirect(await getNoMembershipRedirect(supabase, user.id));
   if (membership.role !== "ADMIN") return;
 
   await supabase
@@ -544,7 +547,7 @@ export async function reorderLeadStageAction(stageId: string, direction: "up" | 
   if (!user) redirect("/login");
 
   const membership = await getCurrentMembership(supabase, user.id);
-  if (!membership) redirect("/signup");
+  if (!membership) redirect(await getNoMembershipRedirect(supabase, user.id));
   if (membership.role !== "ADMIN") return;
 
   const { data: stages } = await supabase
@@ -618,7 +621,7 @@ export async function moveLeadStageAction(leadId: string, stageId: string): Prom
 
   const membership = await getCurrentMembership(supabase, user.id);
   if (!membership) {
-    redirect("/signup");
+    redirect(await getNoMembershipRedirect(supabase, user.id));
   }
 
   const { data: existingLead, error: fetchError } = await supabase
