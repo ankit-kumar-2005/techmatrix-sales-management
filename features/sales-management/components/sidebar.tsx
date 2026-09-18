@@ -37,7 +37,7 @@ type LinkedNavItem = {
 
 const NAV_ITEMS: NavItem[] = [
   { label: "Pipeline", icon: PipelineIcon, href: "/sales-management" },
-  { label: "Lead Capture", icon: LeadCaptureIcon },
+  { label: "Lead Capture", icon: LeadCaptureIcon, href: "/lead-capture" },
   { label: "Automations", icon: AutomationsIcon },
   { label: "Catalog", icon: CatalogIcon, href: "/catalog" },
   { label: "Contacts", icon: ContactsIcon, href: "/contacts" },

@@ -51,13 +51,19 @@ function describeAllTiersFailed(attempts: string[] | undefined): string {
   return "The AI couldn't produce a usable result for this input, even after retrying with a different model. Nothing was saved. Try rephrasing the notes.";
 }
 
-/** Separate copy for an IMAGE that exhausted the image chain. The
- *  difference is not cosmetic: only the two Gemma tiers can read an
- *  image (tier 3 rejects the multimodal message format outright, tested
- *  live), and both share one provider rate limit. So when this fires the
- *  image was almost certainly fine and the advice "use a clearer image"
- *  would be actively wrong — pasting the text works right now, and is
- *  what the user should be told. */
+/** Separate copy for an IMAGE that exhausted the image chain.
+ *
+ * As of 2026-09-18 the image chain has three tiers across TWO providers
+ * (Nex AGI, then Google AI Studio twice) — this firing means all three
+ * failed, which is a stronger signal than it used to be back when the
+ * chain was Google-only and this same failure just meant "Google is
+ * throttled". The advice below still holds regardless: pasting the text
+ * goes through the TEXT chain's own tier 3 (nex-n2.5-mini), a model
+ * never touched by an image request at all, so "should work now" stays
+ * true whichever of the image tiers actually failed. See
+ * lib/openrouter.ts's DEFAULT_IMAGE_CHAIN comment for the full,
+ * evidenced reasoning behind which models are and are not in this
+ * chain. */
 function describeImageTiersUnavailable(): string {
   return "Image reading is temporarily unavailable — the AI models that can read images are busy. Nothing was saved. Paste the text of your notes instead, which uses a different model and should work now.";
 }

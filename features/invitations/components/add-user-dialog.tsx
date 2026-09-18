@@ -11,7 +11,7 @@ import { formatRoleLabel } from "@/features/customers/lib/role-labels";
 import { ContactsIcon, MailIcon, UserPlusIcon } from "@/features/sales-management/components/icons";
 import { createInvitationAction } from "../actions";
 import { initialInvitationFormState, type InvitationFormState } from "../form-state";
-import { ManagerSelect } from "./manager-select";
+import { TeamSelect } from "@/components/shared/team-select";
 import type { AssignableRole } from "../lib/get-roles";
 import type { TeamDirectoryEntry } from "@/types/lead";
 
@@ -114,7 +114,7 @@ export function AddUserDialog({ roles, managerOptions, renderTrigger, onSuccess 
    *
    * QUERIES role="alert", NOT aria-invalid: every error renderer in this
    * form emits a role="alert" paragraph (FormField, SelectField and
-   * ManagerSelect alike), whereas ManagerSelect deliberately sets no
+   * TeamSelect alike), whereas TeamSelect deliberately sets no
    * aria-invalid — it is a custom combobox where that attribute isn't
    * valid on the element it would land on. One selector therefore covers
    * every control type plus the form-level banner, and because
@@ -209,11 +209,16 @@ export function AddUserDialog({ roles, managerOptions, renderTrigger, onSuccess 
                 ))}
               </SelectField>
 
-              <ManagerSelect
+              <TeamSelect
                 id="invitation-manager"
                 name="manager_id"
                 label="Manager"
                 options={managerOptions}
+                /* Was this component's hardcoded empty label before it
+                   was promoted to components/shared — now passed in,
+                   because "No manager" is only right for this one
+                   caller. */
+                emptyOptionLabel="No manager"
                 helperText="Optional. Only active members of your organization are listed."
                 error={fieldErrors.manager_id}
               />

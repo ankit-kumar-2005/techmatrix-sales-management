@@ -65,23 +65,71 @@ const DEFAULT_TEXT_CHAIN = [
 ] as const;
 
 /**
- * THE IMAGE CHAIN IS A SUBSET, AND THAT IS A TESTED FACT, NOT CAUTION.
+ * THE IMAGE CHAIN, AND WHY EACH TIER IS OR ISN'T IN IT — every claim
+ * below is from a real request against the live API on 2026-09-18, not
+ * the model catalogue, which has already been wrong once (see the
+ * nex-n2.5-mini note).
  *
- * OpenRouter metadata lists nex-agi/nex-n2.5-mini:free as accepting
- * image input. It does not, in practice: sending it the OpenAI
- * content-parts message format returns HTTP 400 "invalid_request" from
- * the provider with an image part, and hangs past 60s with a
- * content-parts array containing NO image at all — while the identical
- * request using plain string content returns 200. The model is
- * text-only in practice regardless of what the catalogue advertises.
+ * TIER 1 — nex-agi/nex-n2.5-pro:free (NEW).
+ * The reason this chain used to be Google-only: both Gemma tiers route
+ * through Google AI Studio's single shared free endpoint, so a Google
+ * outage took out the ENTIRE image chain at once — which is exactly
+ * what was observed throughout this project's own testing, repeatedly.
+ * nex-n2.5-pro is a genuinely different provider (Nex AGI infra, not
+ * Google AI Studio — confirmed via the error envelope's own
+ * metadata.provider_name on unrelated calls), so it survives a Google
+ * outage instead of sharing its failure. Verified end-to-end with a
+ * REAL rendered image containing real text (not a blank pixel) and
+ * response_format included exactly as this module sends it: it
+ * returned valid JSON, matching extractedMeetingNotesSchema, that
+ * correctly named both attendees, produced a coherent summary, and
+ * correctly resolved a relative date ("two weeks") against the
+ * supplied reference date. 262K context, no expiration date.
  *
- * Keeping it out of the image chain does two things: an image upload
- * never burns 45 seconds timing out against a tier that cannot read it,
- * and exhausting this chain produces a DISTINCT failure the UI can
- * phrase honestly ("image extraction is temporarily unavailable, paste
- * the text instead") rather than the misleading "try a clearer image".
+ * TIERS 2-3 — the two Gemma models, unchanged. Still genuinely
+ * image-capable (confirmed live: a real image request returns 429 —
+ * rejected by Google's rate limiter, not by the model — meaning the
+ * request itself is accepted). Kept as fallback for the case where
+ * Nex AGI's pool is the one that's down instead.
+ *
+ * CANDIDATES INVESTIGATED AND REJECTED, so a future pass does not
+ * re-spend the time re-discovering these:
+ *   - openrouter/free — see the text chain's own note; a random router
+ *     cannot be trusted for structured output regardless of modality.
+ *   - nex-agi/nex-n2.5-mini:free — real HTTP 400 on an image content
+ *     part despite the catalogue listing image support. This is NOT
+ *     the same model as nex-n2.5-pro above; the two were independently
+ *     verified with opposite results, and mini stays TEXT-ONLY (see
+ *     DEFAULT_TEXT_CHAIN).
+ *   - inclusionai/ling-3.0-flash-vl:free — real HTTP 400 on every
+ *     attempt against a real image.
+ *   - dots-studio/dots-3-note-preview:free — returned valid output on
+ *     a trivial blank-image request, but EMPTY content once tested
+ *     against a real image with response_format set (this module's
+ *     actual request shape). Also a dated preview release with
+ *     expiration_date 2026-09-30 in the catalogue — even had it passed,
+ *     it would need replacing within weeks.
+ *   - nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free — timed out at
+ *     45s with zero output against a real image. A "reasoning" variant;
+ *     same failure shape already seen from reasoning models burning
+ *     their token budget on hidden reasoning (see the text chain's
+ *     openrouter/free note).
+ *   - qwen/qwen3.8-27b:free — rate-limited (429) on every attempt at
+ *     verification time; genuinely a different provider and worth
+ *     revisiting later, but could not be confirmed to actually work.
+ *   - thinkingmachines/inkling:free — HTTP 403, restricted by the
+ *     provider to "agentic harnesses" only; not callable from a plain
+ *     chat-completions request at all.
+ *   - nvidia/nemotron-nano-12b-v2-vl:free — DOES NOT EXIST. Checked
+ *     against OpenRouter's full live model catalogue (446 models) under
+ *     this exact id and every close variant; no match. A claimed
+ *     "cloaked" trial variant that logs prompts was also checked for
+ *     and does not exist either — the only "trial"-labeled model in the
+ *     entire catalogue is an unrelated 13B text-only merge model from a
+ *     different vendor.
  */
 const DEFAULT_IMAGE_CHAIN = [
+  "nex-agi/nex-n2.5-pro:free",
   "google/gemma-4-26b-a4b-it:free",
   "google/gemma-4-31b-it:free",
 ] as const;
@@ -220,6 +268,56 @@ type ChatCompletionResponse = {
 };
 
 /**
+ * A short, SAFE diagnostic line built from OpenRouter's own error
+ * envelope on a non-ok response — added because an audit of this module
+ * found that only response.status was ever logged, which cannot
+ * distinguish "Google AI Studio's shared pool is throttled" from "the
+ * model rejected the image" from "the upstream provider is down": every
+ * one of those was a bare "HTTP 400" or "HTTP 429" with nothing else.
+ *
+ * SAFE BY WHAT IT READS, not by filtering afterward. Every field here
+ * comes from OpenRouter's OWN wrapper describing the PROVIDER's
+ * rejection — never our request, never the image, never the notes text,
+ * never the Authorization header, which lives in a header this function
+ * never sees. `metadata.raw` is the one field that is technically a
+ * third party's free-text string rather than a fixed enum, so it is
+ * length-capped as a hedge against a future provider ever echoing
+ * something back — in every real response observed while building this,
+ * it was a structural message like "temporarily rate-limited upstream".
+ *
+ * Deliberately excludes the envelope's `user_id` field: it is
+ * OpenRouter's identifier for the API key that made the call (this
+ * app's own account, not a customer's), it is constant across every
+ * request this module ever makes, and it has no diagnostic value here —
+ * there is no reason to write it to a log even though it isn't secret.
+ */
+function describeErrorBody(body: unknown): string {
+  if (typeof body !== "object" || body === null) return "no error detail in response body";
+
+  const error = (body as { error?: unknown }).error;
+  if (typeof error !== "object" || error === null) return "no error detail in response body";
+
+  const message = (error as { message?: unknown }).message;
+  const metadata = (error as { metadata?: unknown }).metadata;
+  const providerName =
+    typeof metadata === "object" && metadata !== null ? (metadata as { provider_name?: unknown }).provider_name : undefined;
+  const providerErrorCode =
+    typeof metadata === "object" && metadata !== null
+      ? (metadata as { provider_error_code?: unknown }).provider_error_code
+      : undefined;
+  const raw = typeof metadata === "object" && metadata !== null ? (metadata as { raw?: unknown }).raw : undefined;
+
+  const parts = [
+    typeof providerName === "string" && providerName ? `provider=${providerName}` : null,
+    typeof providerErrorCode === "string" && providerErrorCode ? `provider_code=${providerErrorCode}` : null,
+    typeof message === "string" && message ? `message="${message}"` : null,
+    typeof raw === "string" && raw ? `raw="${raw.slice(0, 200)}"` : null,
+  ].filter((part): part is string => part !== null);
+
+  return parts.length > 0 ? parts.join(" ") : "no error detail in response body";
+}
+
+/**
  * Strips a markdown fence if the model wrapped its JSON in one despite
  * being told not to. Observed in practice often enough to be worth
  * handling rather than treating as a failure — it is the single most
@@ -323,13 +421,41 @@ async function attempt(
   }
 
   if (!response.ok) {
-    // STATUS CODE ONLY. The provider body is never logged or surfaced:
-    // it can quote request details back, and it is not ours to show as
-    // product copy either way.
-    return {
-      status: "tier_failed",
-      detail: response.status === 429 ? "rate-limited (429)" : `HTTP ${response.status}`,
-    };
+    // CATEGORY LABEL, KEPT STABLE ON PURPOSE: "rate-limited (429)" and
+    // the others below are the exact substrings
+    // describeAllTiersFailed() in actions.ts already matches on to
+    // decide whether every tier was merely throttled — changing this
+    // wording would silently change what that function reports. The
+    // body detail appended after the em dash is new; nothing before it
+    // changed shape.
+    //
+    // 429 vs 5xx vs other 4xx are NOT the same failure and are no
+    // longer folded into one bucket: a 429 is OpenRouter's own rate
+    // limiter (or the upstream provider's, per limit_source in the
+    // body), a 5xx means the upstream provider itself is unavailable,
+    // and any other 4xx means the request was rejected outright — which
+    // covers both "our request was malformed" and "this specific model
+    // doesn't support what we sent it" (an image, most often). The
+    // response body is what actually tells those two apart, which is
+    // why it is read below rather than left at a bare status code.
+    const category =
+      response.status === 429
+        ? "rate-limited (429)"
+        : response.status >= 500
+          ? `provider unavailable (HTTP ${response.status})`
+          : `invalid request (HTTP ${response.status})`;
+
+    // The body is read here, and ONLY here — this branch returns
+    // immediately after, so there is no later code path on this
+    // response that still needs an unconsumed stream.
+    let bodyDetail: string;
+    try {
+      bodyDetail = describeErrorBody(await response.json());
+    } catch {
+      bodyDetail = "error body was not JSON";
+    }
+
+    return { status: "tier_failed", detail: `${category} — ${bodyDetail}` };
   }
 
   let payload: ChatCompletionResponse;
