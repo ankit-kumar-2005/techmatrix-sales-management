@@ -67,6 +67,18 @@ type TeamSelectProps = {
   /** Initial selection. Uncontrolled after mount — this component owns
    *  its state, like every other form control in this app. */
   defaultSelectedIds?: string[];
+  /**
+   * OPTIONAL, and additive: notified whenever the selection changes.
+   *
+   * Every existing caller submits through a <form> and reads the hidden
+   * inputs above, so none of them passes this and none of them is
+   * affected by it. The automation builder needs it because it is not a
+   * form — the graph it is editing lives in React state and is sent as
+   * JSON, so there is no submission for a hidden input to ride on. The
+   * hidden inputs are still rendered either way, so the form path is
+   * unchanged.
+   */
+  onSelectionChange?: (selectedIds: string[]) => void;
 };
 
 export function TeamSelect({
@@ -80,6 +92,7 @@ export function TeamSelect({
   emptyOptionLabel,
   multiple = false,
   defaultSelectedIds,
+  onSelectionChange,
 }: TeamSelectProps) {
   const [selectedIds, setSelectedIds] = useState<string[]>(() => defaultSelectedIds ?? []);
   const [isOpen, setIsOpen] = useState(false);
@@ -133,7 +146,12 @@ export function TeamSelect({
 
   function pick(optionId: string) {
     if (!multiple) {
-      setSelectedIds(optionId ? [optionId] : []);
+      const next = optionId ? [optionId] : [];
+      setSelectedIds(next);
+      // Called with the value being set, not read back from state — a
+      // state setter is asynchronous, so notifying from the new value is
+      // the only way the callback cannot be one selection behind.
+      onSelectionChange?.(next);
       setIsOpen(false);
       setQuery("");
       return;
@@ -141,9 +159,17 @@ export function TeamSelect({
     // Multi: toggle, and KEEP THE MENU OPEN — adding three people to a
     // rotation should not mean reopening the menu three times. The
     // search term is kept too, so "add both Sharmas" is two clicks.
-    setSelectedIds((current) =>
-      current.includes(optionId) ? current.filter((value) => value !== optionId) : [...current, optionId],
-    );
+    //
+    // `next` is computed from the current render's state rather than
+    // inside the updater: a state updater must stay pure (React may call
+    // it twice in development), so the notification cannot live in
+    // there. pick() only ever runs from a click handler, so the state it
+    // closes over is the state that was on screen when it was clicked.
+    const next = selectedIds.includes(optionId)
+      ? selectedIds.filter((value) => value !== optionId)
+      : [...selectedIds, optionId];
+    setSelectedIds(next);
+    onSelectionChange?.(next);
   }
 
   const isSelected = (optionId: string) => selectedIds.includes(optionId);

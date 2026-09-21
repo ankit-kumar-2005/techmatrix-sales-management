@@ -160,6 +160,7 @@ const leadFieldsShape = {
     .optional()
     .transform((value) => value === "on"),
   whatsapp_phone: optionalPhone(),
+  address: optionalText(),
   deal_value: optionalDealValue(),
   expected_close_date: optionalDate("Expected close date"),
   stage_id: z.string().trim().min(1, "Select a stage.").uuid("Select a stage."),

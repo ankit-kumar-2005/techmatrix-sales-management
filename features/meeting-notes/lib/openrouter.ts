@@ -1,5 +1,13 @@
 import { MEETING_NOTES_MAX_LENGTH, type MeetingNotesSourceKind } from "../constants";
 import { extractedMeetingNotesSchema, type ExtractedMeetingNotes } from "./extraction-schema";
+import {
+  describeErrorBody,
+  parseChain,
+  stripJsonFence,
+  JSON_ONLY_REMINDER,
+  OPENROUTER_CHAT_COMPLETIONS_URL,
+  type ChatCompletionResponse,
+} from "@/lib/ai/openrouter";
 
 /**
  * SERVER-ONLY. The single place this application talks to OpenRouter.
@@ -28,8 +36,6 @@ import { extractedMeetingNotesSchema, type ExtractedMeetingNotes } from "./extra
 if (typeof window !== "undefined") {
   throw new Error("features/meeting-notes/lib/openrouter.ts is server-only and must not be imported by client code.");
 }
-
-const OPENROUTER_CHAT_COMPLETIONS_URL = "https://openrouter.ai/api/v1/chat/completions";
 
 /**
  * THE FALLBACK CHAIN, in order. Each tier is tried in full (including
@@ -134,14 +140,6 @@ const DEFAULT_IMAGE_CHAIN = [
   "google/gemma-4-31b-it:free",
 ] as const;
 
-function parseChain(configured: string | undefined, fallback: readonly string[]): string[] {
-  const chain = (configured ?? "")
-    .split(",")
-    .map((entry) => entry.trim())
-    .filter(Boolean);
-  return chain.length > 0 ? chain : [...fallback];
-}
-
 function resolveModelChain(kind: ExtractionSource["kind"]): string[] {
   return kind === "Image"
     ? parseChain(process.env.OPENROUTER_IMAGE_MODEL_CHAIN, DEFAULT_IMAGE_CHAIN)
@@ -208,10 +206,10 @@ Rules:
   provided context; otherwise leave suggested_due_date null.
 - Output must be valid, parseable JSON and nothing else.`;
 
-/** Appended as a second system message on the retry attempt only. Kept
- *  separate from SYSTEM_PROMPT rather than concatenated so the verbatim
- *  prompt above stays byte-identical to the specification. */
-const JSON_ONLY_REMINDER = "Return ONLY the JSON object, nothing else.";
+/* JSON_ONLY_REMINDER is imported from lib/ai/openrouter. It is appended
+   as a second system message on the retry attempt only, kept separate
+   from SYSTEM_PROMPT rather than concatenated so the verbatim prompt
+   above stays byte-identical to the specification. */
 
 export type ExtractionSource =
   | { kind: "Text"; text: string }
@@ -262,10 +260,8 @@ type AttemptOutcome =
  * `content` is deliberately `unknown`: tier 3 is a reasoning model and
  * returns `content: null` when it exhausts max_tokens thinking.
  */
-type ChatCompletionResponse = {
-  choices?: Array<{ message?: { content?: unknown } }>;
-  model?: unknown;
-};
+/* The type itself now lives in lib/ai/openrouter and is imported above;
+   the comment here is the reasoning for why it is shaped that way. */
 
 /**
  * A short, SAFE diagnostic line built from OpenRouter's own error
@@ -291,31 +287,6 @@ type ChatCompletionResponse = {
  * request this module ever makes, and it has no diagnostic value here —
  * there is no reason to write it to a log even though it isn't secret.
  */
-function describeErrorBody(body: unknown): string {
-  if (typeof body !== "object" || body === null) return "no error detail in response body";
-
-  const error = (body as { error?: unknown }).error;
-  if (typeof error !== "object" || error === null) return "no error detail in response body";
-
-  const message = (error as { message?: unknown }).message;
-  const metadata = (error as { metadata?: unknown }).metadata;
-  const providerName =
-    typeof metadata === "object" && metadata !== null ? (metadata as { provider_name?: unknown }).provider_name : undefined;
-  const providerErrorCode =
-    typeof metadata === "object" && metadata !== null
-      ? (metadata as { provider_error_code?: unknown }).provider_error_code
-      : undefined;
-  const raw = typeof metadata === "object" && metadata !== null ? (metadata as { raw?: unknown }).raw : undefined;
-
-  const parts = [
-    typeof providerName === "string" && providerName ? `provider=${providerName}` : null,
-    typeof providerErrorCode === "string" && providerErrorCode ? `provider_code=${providerErrorCode}` : null,
-    typeof message === "string" && message ? `message="${message}"` : null,
-    typeof raw === "string" && raw ? `raw="${raw.slice(0, 200)}"` : null,
-  ].filter((part): part is string => part !== null);
-
-  return parts.length > 0 ? parts.join(" ") : "no error detail in response body";
-}
 
 /**
  * Strips a markdown fence if the model wrapped its JSON in one despite
@@ -327,12 +298,6 @@ function describeErrorBody(body: unknown): string {
  * by taking the first fenced block rather than requiring the fence to be
  * the entire message.
  */
-function stripJsonFence(text: string): string {
-  const trimmed = text.trim();
-  const fenced = trimmed.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/i);
-  return (fenced ? fenced[1] : trimmed).trim();
-}
-
 /**
  * The user message. Today's server-side date is passed as explicit
  * context because the prompt's own rule allows resolving a relative

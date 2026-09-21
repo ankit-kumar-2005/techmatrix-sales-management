@@ -36,6 +36,13 @@ export type Lead = {
   email: string | null;
   phone: string | null;
   whatsapp_phone: string | null;
+  /** Free-text postal address. Added alongside Lead Capture's inbound
+   *  webhook ingestion (supabase/migrations/20260919120000) — a
+   *  captured lead's address arrives already composed by that source's
+   *  own adapter (see features/integrations/lib/providers/), while a
+   *  manually-created lead types it straight into this one field. Same
+   *  column either way; nothing distinguishes how it was filled in. */
+  address: string | null;
   deal_value: number | null;
   stage_id: string;
   owner_id: string | null;

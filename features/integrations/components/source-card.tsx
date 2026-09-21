@@ -6,7 +6,7 @@ type SourceCardProps = {
   description: string;
   connected: boolean;
   /** Connected but paused. Rendered as its own state rather than as
-   *  "not connected", because the URL is still installed in IndiaMART
+   *  "not connected", because the URL is still installed at the source
    *  and the distinction is what tells an admin whether they need to go
    *  back there. */
   paused?: boolean;
@@ -25,11 +25,12 @@ type SourceCardProps = {
 /**
  * One connected lead source.
  *
- * NO "SYNC NOW" BUTTON, and not as an oversight: IndiaMART pushes to a
- * webhook, so there is no remote list this app could pull on demand. A
- * sync control would be a button that cannot do anything. "Last lead
- * received" answers the question that button was there to answer —
- * "is this actually working?" — with something true.
+ * NO "SYNC NOW" BUTTON, and not as an oversight: every source this
+ * feature supports pushes to a webhook, so there is no remote list this
+ * app could pull on demand. A sync control would be a button that
+ * cannot do anything. "Last lead received" answers the question that
+ * button was there to answer — "is this actually working?" — with
+ * something true.
  */
 export function SourceCard({
   name,
@@ -54,9 +55,18 @@ export function SourceCard({
       : "bg-teal-50 text-teal-700 ring-teal-100";
 
   const dotClass = !connected ? "bg-neutral-400" : paused ? "bg-amber-500" : "bg-teal-500";
+  // Live only for the genuinely live state — not paused, not
+  // disconnected. A slowed, restrained animate-pulse (the same utility
+  // Skeleton loaders already use elsewhere, just applied to a 6px dot
+  // instead of a whole placeholder block) rather than anything louder
+  // like a ping-ring: it should read as "this is quietly working," not
+  // draw the eye. Respects prefers-reduced-motion via the same
+  // motion-reduce:animate-none pairing already established on every
+  // other animated element in this app.
+  const isLive = connected && !paused;
 
   return (
-    <div className="flex h-full flex-col rounded-2xl bg-white p-5 shadow-sm ring-1 ring-black/5">
+    <div className="flex h-full flex-col rounded-2xl bg-white p-5 shadow-sm ring-1 ring-black/5 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
       <div className="flex items-start gap-3">
         <span
           aria-hidden="true"
@@ -70,7 +80,12 @@ export function SourceCard({
             <span
               className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px] font-bold tracking-wide uppercase ring-1 ring-inset ${statusClass}`}
             >
-              <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${dotClass}`} aria-hidden="true" />
+              <span
+                className={`h-1.5 w-1.5 shrink-0 rounded-full ${dotClass} ${
+                  isLive ? "animate-[pulse_2.5s_ease-in-out_infinite] motion-reduce:animate-none" : ""
+                }`}
+                aria-hidden="true"
+              />
               {statusLabel}
             </span>
           </div>

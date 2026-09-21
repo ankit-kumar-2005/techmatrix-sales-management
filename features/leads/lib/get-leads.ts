@@ -24,6 +24,7 @@ export type PipelineLead = Pick<
   | "email"
   | "phone"
   | "whatsapp_phone"
+  | "address"
   | "deal_value"
   | "stage_id"
   | "owner_id"
@@ -46,7 +47,7 @@ export async function getLeadsForCustomer(supabase: SupabaseClient, customerId: 
   const { data, error } = await supabase
     .from("leads")
     .select(
-      "id, company, contact_name, email, phone, whatsapp_phone, deal_value, stage_id, owner_id, source, next_step, status, closed_at, expected_close_date, updated_at",
+      "id, company, contact_name, email, phone, whatsapp_phone, address, deal_value, stage_id, owner_id, source, next_step, status, closed_at, expected_close_date, updated_at",
     )
     .eq("customer_id", customerId)
     .order("updated_at", { ascending: false });

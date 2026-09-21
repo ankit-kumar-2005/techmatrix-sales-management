@@ -19,8 +19,8 @@ type CaptureSettingsFormProps = {
   defaultStageId: string | null;
   assignmentMode: AssignmentMode;
   defaultOwnerId: string | null;
-  /** In rotation order — (created_at, id), the same order
-   *  ingest_indiamart_lead() walks. */
+  /** In rotation order — (created_at, id), the same order ingest_lead()
+   *  walks for every source, not just this one. */
   participantIds: string[];
 };
 
@@ -33,7 +33,7 @@ function SaveButton() {
       disabled={pending}
       className="min-h-11 rounded-full bg-gradient-to-r from-blue-600 to-violet-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm shadow-blue-600/20 transition-all duration-200 hover:from-blue-700 hover:to-violet-700 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:shadow-sm"
     >
-      {pending ? "Saving..." : "Save Capture Rules"}
+      {pending ? "Saving..." : "Save capture rules"}
     </button>
   );
 }

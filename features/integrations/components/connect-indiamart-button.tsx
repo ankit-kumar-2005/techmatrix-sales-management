@@ -4,6 +4,16 @@ import { useState, useTransition } from "react";
 import { MessageBanner } from "@/components/shared/message-banner";
 import { connectIndiamartAction } from "../actions";
 
+type ConnectIndiamartButtonProps = {
+  /** From the Phase 1 source-metadata registry — the label is the only
+   *  thing about this button that varies by source. The ACTION it
+   *  calls is still IndiaMART-specific (connectIndiamartAction), which
+   *  is a deliberately separate, larger, still-deferred piece of work —
+   *  see source-metadata.ts's own note on what a generic connect
+   *  action would need. */
+  sourceName: string;
+};
+
 /**
  * Creating the integration is an explicit act, because it mints a live
  * webhook token — a tenant that has never set this up should not end up
@@ -17,7 +27,7 @@ import { connectIndiamartAction } from "../actions";
  * project's eslint config correctly flags as unused — the ceremony was
  * buying nothing.
  */
-export function ConnectIndiamartButton() {
+export function ConnectIndiamartButton({ sourceName }: ConnectIndiamartButtonProps) {
   const [isPending, startTransition] = useTransition();
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -42,7 +52,7 @@ export function ConnectIndiamartButton() {
         disabled={isPending}
         className="min-h-11 self-start rounded-full bg-gradient-to-r from-blue-600 to-violet-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm shadow-blue-600/20 transition-all duration-200 hover:from-blue-700 hover:to-violet-700 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60"
       >
-        {isPending ? "Connecting..." : "Connect IndiaMART"}
+        {isPending ? "Connecting..." : `Connect ${sourceName}`}
       </button>
       {formError ? <MessageBanner tone="error">{formError}</MessageBanner> : null}
     </div>

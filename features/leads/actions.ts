@@ -1,8 +1,10 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { after } from "next/server";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { drainAutomationQueue } from "@/features/automations/lib/drain";
 import { getFieldErrors } from "@/features/auth/lib/get-field-errors";
 import {
   getCurrentMembership,
@@ -161,6 +163,7 @@ export async function createLeadAction(
     email: parsed.data.email ?? null,
     phone: parsed.data.phone,
     whatsapp_phone: whatsappPhone,
+    address: parsed.data.address ?? null,
     deal_value: parsed.data.deal_value ?? null,
     expected_close_date: parsed.data.expected_close_date ?? null,
     stage_id: parsed.data.stage_id,
@@ -172,6 +175,14 @@ export async function createLeadAction(
   if (error) {
     return { formError: "Something went wrong creating the lead. Please try again." };
   }
+
+  // The lead row's own AFTER INSERT trigger has already written any
+  // automation event, inside the same transaction as the insert above.
+  // This only nudges the worker to pick it up now rather than waiting
+  // for the cron backstop — after(), so it runs once this action's
+  // response is on its way and can neither slow the form down nor fail
+  // it. See features/automations/lib/drain.ts.
+  after(() => drainAutomationQueue("a lead was created"));
 
   revalidatePath("/sales-management");
   revalidatePath("/forecast");
@@ -275,6 +286,7 @@ export async function updateLeadAction(
     email: parsed.data.email ?? null,
     phone: parsed.data.phone,
     whatsapp_phone: whatsappPhone,
+    address: parsed.data.address ?? null,
     deal_value: parsed.data.deal_value ?? null,
     expected_close_date: parsed.data.expected_close_date ?? null,
     stage_id: parsed.data.stage_id,

@@ -1,0 +1,1 @@
+C:/Users/Ankit Kumar/Lead Managment System/techmatrix-sales-management/node_modules/@embedded-postgres/windows-x64/native/bin/postgres.exe "-D" "C:\Users\Ankit Kumar\Lead Managment System\techmatrix-sales-management\test\db\pgdata" "-p" "55432"

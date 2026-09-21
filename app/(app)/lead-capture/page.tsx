@@ -8,12 +8,21 @@ import {
 import { getLeadStagesForCustomer } from "@/features/leads/lib/get-lead-stages";
 import { getVisibleTeamDirectory } from "@/features/leads/lib/get-team-directory";
 import { getLeadCaptureOverview } from "@/features/integrations/lib/get-lead-capture-overview";
+import { getSourceMetadata } from "@/features/integrations/lib/providers/source-metadata";
 import { SourceCard } from "@/features/integrations/components/source-card";
 import { ConnectIndiamartButton } from "@/features/integrations/components/connect-indiamart-button";
 import { WebhookUrlPanel } from "@/features/integrations/components/webhook-url-panel";
 import { CaptureSettingsForm } from "@/features/integrations/components/capture-settings-form";
 import { RecentlyCaptured } from "@/features/integrations/components/recently-captured";
 import { getAppUrl } from "@/lib/app-url";
+import type { IntegrationSource } from "@/types/integration";
+
+/** The only source this page renders today — same "one literal, used
+ *  everywhere by reference" pattern actions.ts uses (see CURRENT_SOURCE
+ *  there). Every display string below reads through
+ *  getSourceMetadata(SOURCE) rather than repeating "IndiaMART" as an
+ *  independent string literal. */
+const SOURCE: IntegrationSource = "IndiaMART";
 
 /**
  * Lead Capture — inbound lead sources.
@@ -73,12 +82,13 @@ export default async function LeadCapturePage() {
   }
 
   const [overview, stages, owners] = await Promise.all([
-    getLeadCaptureOverview(supabase, membership.customer.id, "IndiaMART"),
+    getLeadCaptureOverview(supabase, membership.customer.id, SOURCE),
     getLeadStagesForCustomer(supabase, membership.customer.id),
     getVisibleTeamDirectory(supabase),
   ]);
 
   const { integration } = overview;
+  const metadata = getSourceMetadata(SOURCE);
 
   // Resolved ONCE and threaded into every component that formats a
   // relative time, so every "18 minutes ago" on the page agrees and no
@@ -94,8 +104,16 @@ export default async function LeadCapturePage() {
   // public origin. lib/app-url.ts carries the full reasoning (it is the
   // same resolution the invitation emails use, and the same
   // misconfiguration risk).
+  //
+  // The :source segment is integration.source ITSELF — the exact string
+  // stored on the row, e.g. "IndiaMART" — not a separate URL slug. Every
+  // layer (this URL, the webhook route's registry lookup, the source
+  // column, ingest_lead()'s p_source check) uses that one identical
+  // string, so there is no slug-to-source mapping anywhere to fall out
+  // of sync. This is copy-only — an admin never hand-types it — so the
+  // mixed-case segment costs nothing in practice.
   const webhookUrl = integration
-    ? `${getAppUrl()}/api/webhooks/leads/indiamart/${integration.webhook_token}`
+    ? `${getAppUrl()}/api/webhooks/leads/${integration.source}/${integration.webhook_token}`
     : null;
 
   return (
@@ -106,9 +124,9 @@ export default async function LeadCapturePage() {
         <h2 className="text-xs font-bold tracking-wide text-neutral-500 uppercase">Connected sources</h2>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
           <SourceCard
-            name="IndiaMART"
-            description="Buyer enquiries pushed from your IndiaMART seller account."
-            mark="IM"
+            name={metadata.displayName}
+            description={metadata.description}
+            mark={metadata.initials}
             connected={Boolean(integration)}
             paused={integration?.status === "Inactive"}
             todayCount={overview.todayCount}
@@ -124,7 +142,7 @@ export default async function LeadCapturePage() {
           <section className="flex flex-col gap-3">
             <h2 className="text-xs font-bold tracking-wide text-neutral-500 uppercase">Connection</h2>
             <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-black/5 sm:p-6">
-              <WebhookUrlPanel integrationId={integration.id} webhookUrl={webhookUrl} />
+              <WebhookUrlPanel integrationId={integration.id} webhookUrl={webhookUrl} sourceName={metadata.displayName} />
             </div>
           </section>
 
@@ -147,13 +165,13 @@ export default async function LeadCapturePage() {
         <section className="flex flex-col gap-3">
           <h2 className="text-xs font-bold tracking-wide text-neutral-500 uppercase">Connection</h2>
           <div className="max-w-2xl rounded-2xl bg-white p-6 shadow-sm ring-1 ring-black/5">
-            <p className="text-sm font-semibold text-neutral-900">IndiaMART isn&rsquo;t connected yet</p>
+            <p className="text-sm font-semibold text-neutral-900">{metadata.displayName} isn&rsquo;t connected yet</p>
             <p className="mt-1.5 text-sm leading-relaxed text-neutral-500">
-              Connecting generates a private webhook URL to paste into IndiaMART&rsquo;s Push API page. Enquiries
-              then arrive as leads automatically — no manual import, and nothing to sync.
+              Connecting generates a private webhook URL to paste into {metadata.displayName}&rsquo;s Push API page.
+              Enquiries then arrive as leads automatically — no manual import, and nothing to sync.
             </p>
             <div className="mt-5">
-              <ConnectIndiamartButton />
+              <ConnectIndiamartButton sourceName={metadata.displayName} />
             </div>
           </div>
         </section>
@@ -161,7 +179,7 @@ export default async function LeadCapturePage() {
 
       <section className="flex flex-col gap-3">
         <h2 className="text-xs font-bold tracking-wide text-neutral-500 uppercase">Recently captured</h2>
-        <RecentlyCaptured leads={overview.recent} owners={owners} sourceName="IndiaMART" nowMs={nowMs} />
+        <RecentlyCaptured leads={overview.recent} owners={owners} source={SOURCE} nowMs={nowMs} />
       </section>
     </div>
   );

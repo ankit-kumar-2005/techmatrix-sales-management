@@ -51,6 +51,10 @@ export type LeadFormDefaultValues = {
   phone?: string | null;
   whatsapp_phone?: string | null;
   email?: string | null;
+  /** Free-text postal address — same column a Lead Capture webhook
+   *  (features/integrations) fills in automatically; here it's just
+   *  another field the person filling out this form can type into. */
+  address?: string | null;
   company?: string | null;
   deal_value?: number | null;
   /** ISO yyyy-mm-dd, which is both what the leads.expected_close_date
@@ -186,6 +190,15 @@ export function LeadFormFields({ stages, owners, role, currentUserEmail, fieldEr
           variant="filled"
           defaultValue={defaultValues?.email ?? undefined}
           error={fieldErrors.email}
+        />
+
+        <FormField
+          label="Address"
+          name="address"
+          variant="filled"
+          placeholder="Street, City, State, PIN, Country"
+          defaultValue={defaultValues?.address ?? undefined}
+          error={fieldErrors.address}
         />
       </FormSection>
 

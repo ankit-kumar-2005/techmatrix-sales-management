@@ -83,8 +83,8 @@ export async function getLeadCaptureOverview(
 
 /**
  * Participant ids in ROTATION ORDER — (created_at, id), matching
- * exactly what ingest_indiamart_lead() rotates through. The UI lists
- * them numbered in this order, so if these two ever disagreed the
+ * exactly what ingest_lead() rotates through for every source. The UI
+ * lists them numbered in this order, so if these two ever disagreed the
  * numbering would be a lie.
  */
 async function getParticipantIds(supabase: SupabaseClient, integrationId: string): Promise<string[]> {

@@ -7,16 +7,22 @@
 --   * leads.external_source_id the source's own id for the enquiry, and
 --                              the entire dedupe mechanism for this
 --                              phase.
+--   * leads.address             a single free-text postal address column;
+--                              see the adapter-layer note in design note
+--                              1 for why the FIVE separate fields a
+--                              source might send are joined before they
+--                              ever reach this migration.
 --   * customer_integrations              one row per (customer, source).
 --   * customer_integration_participants  the ADMIN-PICKED round-robin
 --                              roster. Explicitly not "everyone".
---   * ingest_indiamart_lead()  the whole write path, SECURITY DEFINER.
+--   * ingest_lead()  the whole write path, SECURITY DEFINER, and
+--                              DELIBERATELY GENERIC — see design note 10.
 --
 -- ---------------------------------------------------------------------
 -- DESIGN NOTES
 -- ---------------------------------------------------------------------
 --
--- 1. WHY leads.notes EXISTS
+-- 1. WHY leads.notes AND leads.address EXIST
 --    IndiaMART's payload carries QUERY_MESSAGE (what the buyer actually
 --    typed) and QUERY_PRODUCT_NAME (what they enquired about). Those are
 --    the most useful fields in the whole push, and `leads` had nowhere
@@ -24,6 +30,17 @@
 --    "what to do next" everywhere else in this app and renders under
 --    that label in the Pipeline. Reusing it would have made an inbound
 --    enquiry read as an outbound plan. One nullable column instead.
+--
+--    address is the same idea for IndiaMART's five separate location
+--    fields (SENDER_ADDRESS, SENDER_CITY, SENDER_STATE, SENDER_PINCODE,
+--    SENDER_COUNTRY_ISO). Neither concatenation happens in this
+--    migration: joining QUERY_PRODUCT_NAME with QUERY_MESSAGE into one
+--    notes string, and joining the five address parts into one address
+--    string, are both decisions about how ONE vendor's payload maps onto
+--    these generic columns — that belongs in that vendor's own adapter
+--    (features/integrations/lib/providers/), not in ingest_lead(), which
+--    only ever sees the single already-composed p_notes and p_address
+--    values by the time it runs. See design note 10.
 --
 -- 2. WHY THE DEDUPE IS A PARTIAL UNIQUE INDEX AND NOT A LOG TABLE
 --    IndiaMART retries a push it did not see a 200 for, so the same
@@ -54,14 +71,15 @@
 -- 4. WHY THE WHOLE WRITE PATH IS ONE SECURITY DEFINER FUNCTION
 --    Two independent reasons, either of which alone would force it.
 --
---    RLS. The webhook is unauthenticated by nature — IndiaMART posts to
---    a URL, it does not hold a session. There is no auth.uid(), so every
---    RLS policy in this schema evaluates to false and an ordinary insert
---    cannot work. The alternative is a service-role key in the request
---    path, which this project does not have and does not want (CLAUDE.md
---    Section E). A SECURITY DEFINER function granted to `anon` keeps the
---    privileged step inside the database, where its inputs are a fixed
---    signature rather than an arbitrary query.
+--    RLS. A lead-source webhook is unauthenticated by nature — the
+--    vendor posts to a URL, it does not hold a session. There is no
+--    auth.uid(), so every RLS policy in this schema evaluates to false
+--    and an ordinary insert cannot work. The alternative is a
+--    service-role key in the request path, which this project does not
+--    have and does not want (CLAUDE.md Section E). A SECURITY DEFINER
+--    function granted to `anon` keeps the privileged step inside the
+--    database, where its inputs are a fixed signature rather than an
+--    arbitrary query.
 --
 --    ATOMICITY. Round-robin reads last_assigned_owner_id, computes who
 --    is next, and writes it back. Done in application code that is a
@@ -70,11 +88,13 @@
 --    forever. Inside one function with SELECT ... FOR UPDATE on the
 --    integration row it is serialized and correct.
 --
---    The function takes p_token and payload FIELDS only. It never
---    accepts a customer_id: the tenant is resolved from the token and
---    from nothing else, which is the property that makes the endpoint
---    safe to expose. Same shape as accept_customer_user_invitation(),
---    which likewise derives everything trustworthy itself.
+--    The function takes p_token and NORMALIZED payload FIELDS only —
+--    generic ones (p_contact_name, p_company, ...), never a vendor's own
+--    field names (see design note 10). It never accepts a customer_id:
+--    the tenant is resolved from the token and from nothing else, which
+--    is the property that makes the endpoint safe to expose. Same shape
+--    as accept_customer_user_invitation(), which likewise derives
+--    everything trustworthy itself.
 --
 -- 5. WHY THE STAGE IS RE-VALIDATED INSTEAD OF TRUSTED
 --    leads has a BEFORE INSERT trigger (protect_lead_stage_transition)
@@ -135,9 +155,47 @@
 --    parse the new source's payload anyway.
 --
 --    Not constrained to non-blank either, deliberately kept as the one
---    line it is: `source` is never user input. It is written by
---    ingest_indiamart_lead() as a literal and by connectIndiamartAction
---    from a typed constant, so a blank value has no path in.
+--    line it is: `source` is never user input. On the write side it is
+--    written by connectIndiamartAction from a typed constant; on the
+--    ingest side ingest_lead() writes v_integration.source — the value
+--    already sitting in the row a webhook_token resolved to, never a
+--    literal and never the caller's own claim — so a blank value has no
+--    path in either way.
+--
+-- 10. WHY ingest_lead() IS GENERIC, AND WHAT THE p_source PARAMETER
+--     ACTUALLY GUARDS
+--     Originally this function was ingest_indiamart_lead(), took
+--     IndiaMART's own field names as parameters (p_sender_name,
+--     p_query_message, ...), and filtered its token lookup by
+--     `and source = 'IndiaMART'`. That welded two unrelated jobs
+--     together: parsing one vendor's payload shape, and the universal
+--     mechanics every source needs regardless of vendor (token
+--     resolution, dedupe, round-robin, stage/owner fallback, the
+--     insert). Adding a second source would have meant either
+--     duplicating every one of those universal pieces into a second
+--     function, or somehow parameterizing vendor-specific field names
+--     into one function — both wrong. The vendor-specific parsing now
+--     lives entirely in features/integrations/lib/providers/ (one
+--     adapter per source, TypeScript, no SQL); this function knows
+--     nothing about any vendor's field names and never will.
+--
+--     THE TOKEN LOOKUP IS BY webhook_token ALONE, NOT ALSO BY source.
+--     webhook_token already carries a UNIQUE constraint, so it already
+--     uniquely determines both which tenant a push belongs to AND which
+--     source that tenant's integration actually is — filtering by
+--     source too would be redundant at best.
+--
+--     p_source (what the URL's own :source segment claimed) is checked
+--     SEPARATELY, immediately after resolving the token, and ONLY as a
+--     belt-and-braces sanity check: if it disagrees with
+--     v_integration.source (the true source the token belongs to), this
+--     returns the exact same 'unknown_token' a truly unknown token
+--     would — never a distinct answer. That is deliberate: a token
+--     pasted into the wrong vendor's URL slot (e.g. IndiaMART's token
+--     posted to a /justdial/ path) is caught without needing a second
+--     security mechanism, and without ever revealing to an
+--     unauthenticated caller that the token is real but was used wrong
+--     — which would leak more than a flat 404 does.
 --
 -- Wrapped in a transaction like every prior migration in this project.
 -- ---------------------------------------------------------------------
@@ -150,7 +208,8 @@ begin;
 
 alter table public.leads
   add column notes text,
-  add column external_source_id text;
+  add column external_source_id text,
+  add column address text;
 
 -- Partial: only rows that actually came from an external source are
 -- constrained. See design note 2.
@@ -301,19 +360,20 @@ revoke all on public.customer_integration_participants from anon, authenticated;
 grant select, insert, delete on public.customer_integration_participants to authenticated;
 
 -- ---------------------------------------------------------------------
--- ingest_indiamart_lead — the entire webhook write path.
--- See design notes 4, 5 and 6.
+-- ingest_lead — the entire webhook write path, and DELIBERATELY GENERIC.
+-- See design notes 4, 5, 6 and 10.
 -- ---------------------------------------------------------------------
 
-create or replace function public.ingest_indiamart_lead(
+create or replace function public.ingest_lead(
   p_token text,
-  p_unique_query_id text,
-  p_sender_name text,
-  p_sender_mobile text,
-  p_sender_email text,
-  p_sender_company text,
-  p_query_product_name text,
-  p_query_message text
+  p_source text,
+  p_external_id text,
+  p_contact_name text,
+  p_company text,
+  p_email text,
+  p_phone text,
+  p_address text,
+  p_notes text
 )
 returns text
 language plpgsql
@@ -329,25 +389,37 @@ declare
   v_external_id text;
   v_company text;
   v_contact text;
+  v_email text;
+  v_phone text;
+  v_address text;
   v_notes text;
   v_inserted uuid;
 begin
   -- 1. THE ONLY TENANT RESOLUTION THERE IS. Everything downstream uses
-  --    v_integration.customer_id; nothing in the payload is ever
-  --    consulted for it. FOR UPDATE because step 3 may write
-  --    last_assigned_owner_id back and two pushes must not interleave
-  --    (design note 4).
+  --    v_integration.customer_id (and v_integration.source — see step 2
+  --    below); nothing in the payload is ever consulted for either.
+  --    FOR UPDATE because step 4 may write last_assigned_owner_id back
+  --    and two pushes must not interleave (design note 4).
+  --
+  --    BY webhook_token ALONE, not also filtered by source — see design
+  --    note 10 for why that would be redundant.
   select * into v_integration
   from public.customer_integrations
   where webhook_token = p_token
-    and source = 'IndiaMART'
     and status = 'Active'
   for update;
 
-  -- Unknown token, wrong source, or deactivated integration are one
-  -- answer, so the caller can return a generic 404 that distinguishes
-  -- none of them.
+  -- Unknown token, or a deactivated integration, are one answer, so the
+  -- caller can return a generic 404 that distinguishes neither.
   if not found then
+    return 'unknown_token';
+  end if;
+
+  -- Belt-and-braces (design note 10): the URL's own :source segment
+  -- must agree with what the token actually belongs to. A mismatch gets
+  -- the EXACT SAME answer as a truly unknown token — never a distinct
+  -- one, which would tell an unauthenticated caller the token is real.
+  if v_integration.source is distinct from p_source then
     return 'unknown_token';
   end if;
 
@@ -355,13 +427,16 @@ begin
   --    advance the round-robin rotation — otherwise every retry burns a
   --    participant's turn. The unique index is still the real guarantee
   --    (see the ON CONFLICT below); this is what keeps the common case
-  --    from having side effects.
-  v_external_id := nullif(btrim(coalesce(p_unique_query_id, '')), '');
+  --    from having side effects. Scoped by v_integration.source (the
+  --    TRUE source the token resolved to), not p_source — the two are
+  --    confirmed equal by this point, but v_integration.source is the
+  --    one that was never merely a caller's claim.
+  v_external_id := nullif(btrim(coalesce(p_external_id, '')), '');
 
   if v_external_id is not null and exists (
     select 1 from public.leads
     where customer_id = v_integration.customer_id
-      and source = 'IndiaMART'
+      and source = v_integration.source
       and external_source_id = v_external_id
   ) then
     return 'duplicate';
@@ -470,45 +545,62 @@ begin
     end if;
   end if;
 
-  -- 5. Normalize the payload into this app's own lead shape.
-  --    leads.company and leads.contact_name are both NOT NULL, and
-  --    IndiaMART's SENDER_COMPANY is routinely empty for an individual
-  --    buyer — so company falls back to the person's name, and the
-  --    literal marker is a last resort rather than a blank row.
-  v_contact := nullif(btrim(coalesce(p_sender_name, '')), '');
-  v_company := coalesce(
-    nullif(btrim(coalesce(p_sender_company, '')), ''),
-    v_contact,
-    'IndiaMART enquiry'
-  );
-  v_contact := coalesce(v_contact, 'IndiaMART enquiry');
+  -- 5. Normalize the ALREADY-PARSED fields into this app's own lead
+  --    shape. Every vendor-specific fallback chain (design note 10's
+  --    whole point) already ran in that vendor's own adapter before
+  --    this function was ever called — a source-specific "if this field
+  --    is empty, fall back to that one" decision belongs there, not
+  --    here (see features/integrations/lib/providers/ for the concrete
+  --    per-source example).
+  --
+  --    What remains here is the ONE fallback that is genuinely
+  --    universal rather than vendor-specific: leads.company and
+  --    leads.contact_name are both NOT NULL, and a source can still
+  --    send neither (an adapter's own chain can legitimately end in
+  --    null). Built from p_source rather than a hardcoded vendor name,
+  --    so this produces "IndiaMART enquiry" today with zero code here
+  --    devoted to IndiaMART specifically, and "JustDial enquiry" for a
+  --    future source with zero changes to this function at all.
+  v_contact := nullif(btrim(coalesce(p_contact_name, '')), '');
+  v_company := nullif(btrim(coalesce(p_company, '')), '');
+  v_company := coalesce(v_company, v_contact, p_source || ' enquiry');
+  v_contact := coalesce(v_contact, p_source || ' enquiry');
 
-  -- concat_ws skips NULL parts, so an enquiry with only a message and
-  -- no product name does not end up with a stray leading newline.
-  v_notes := nullif(btrim(concat_ws(
-    E'\n',
-    case
-      when btrim(coalesce(p_query_product_name, '')) <> ''
-      then 'Product: ' || btrim(p_query_product_name)
-    end,
-    nullif(btrim(coalesce(p_query_message, '')), '')
-  )), '');
+  v_email := nullif(btrim(coalesce(p_email, '')), '');
+  v_phone := nullif(btrim(coalesce(p_phone, '')), '');
+  v_address := nullif(btrim(coalesce(p_address, '')), '');
+  v_notes := nullif(btrim(coalesce(p_notes, '')), '');
 
   -- 6. Insert. ON CONFLICT DO NOTHING is the backstop for a genuine
   --    race that slipped past step 2 — two retries landing at once.
+  --    source is v_integration.source (design note 10's "the true
+  --    source", never p_source and never a literal) — same value used
+  --    for the dedupe check in step 2, so the two can never disagree.
+  --
+  --    whatsapp_phone = v_phone, same as before this split: this
+  --    function still has no dedicated "this IS a WhatsApp number"
+  --    input, because the signature Phase 1 specified has none. That
+  --    was true for IndiaMART's own mobile field and is kept
+  --    byte-identical here rather than silently dropped or silently
+  --    kept without comment — but it is a real, inherited assumption
+  --    ("a source's phone number doubles as its WhatsApp number") that
+  --    will not hold for every future source, and is flagged here for
+  --    whoever adds one where it does not.
   insert into public.leads (
     customer_id, company, contact_name, email, phone, whatsapp_phone,
-    stage_id, owner_id, source, external_source_id, notes, deal_value, status
+    address, stage_id, owner_id, source, external_source_id, notes,
+    deal_value, status
   ) values (
     v_integration.customer_id,
     v_company,
     v_contact,
-    nullif(btrim(coalesce(p_sender_email, '')), ''),
-    nullif(btrim(coalesce(p_sender_mobile, '')), ''),
-    nullif(btrim(coalesce(p_sender_mobile, '')), ''),
+    v_email,
+    v_phone,
+    v_phone,
+    v_address,
     v_stage_id,
     v_owner_id,
-    'IndiaMART',
+    v_integration.source,
     v_external_id,
     v_notes,
     0,
@@ -529,11 +621,11 @@ $$;
 -- webhook is a machine posting to a URL. That is the entire reason this
 -- function is SECURITY DEFINER and takes a token rather than a
 -- customer_id: see design note 4.
-revoke all on function public.ingest_indiamart_lead(
-  text, text, text, text, text, text, text, text
+revoke all on function public.ingest_lead(
+  text, text, text, text, text, text, text, text, text
 ) from public;
-grant execute on function public.ingest_indiamart_lead(
-  text, text, text, text, text, text, text, text
+grant execute on function public.ingest_lead(
+  text, text, text, text, text, text, text, text, text
 ) to anon, authenticated;
 
 commit;

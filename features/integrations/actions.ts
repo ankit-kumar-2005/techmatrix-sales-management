@@ -14,9 +14,23 @@ import {
   setIntegrationStatusSchema,
   updateIntegrationSettingsSchema,
 } from "./schemas";
-import { initialIntegrationFormState, type IntegrationFormState } from "./form-state";
+import type { IntegrationFormState } from "./form-state";
+import { getSourceMetadata } from "./lib/providers/source-metadata";
+import type { IntegrationSource } from "@/types/integration";
 
 const LEAD_CAPTURE_PATH = "/lead-capture";
+
+/**
+ * THE ONE "IndiaMART" LITERAL IN THIS FILE — every message below reads
+ * the display name through getSourceMetadata(CURRENT_SOURCE) rather
+ * than repeating the string. connectIndiamartAction's own action name,
+ * and the fact that only IndiaMART can be connected through it today,
+ * are the still-deferred generic-connect-action piece (see
+ * source-metadata.ts) — this constant does not change that, it only
+ * removes the SEVEN separate hardcoded "IndiaMART" strings that used to
+ * exist across this file's user-facing messages.
+ */
+const CURRENT_SOURCE: IntegrationSource = "IndiaMART";
 
 /**
  * ADMIN-ONLY, in both layers, for every action in this file.
@@ -77,26 +91,31 @@ export async function connectIndiamartAction(): Promise<IntegrationFormState> {
   const { supabase, membership, denied } = await requireAdmin();
   if (denied) return DENIED;
 
+  const displayName = getSourceMetadata(CURRENT_SOURCE).displayName;
+
   const { error } = await supabase.from("customer_integrations").insert({
     customer_id: membership.customer.id,
-    source: "IndiaMART",
+    source: CURRENT_SOURCE,
   });
 
   if (error) {
     // 23505 = unique_violation: customer_integrations_source_key, i.e.
     // two admins pressed Connect at once. The desired end state already
     // exists, so this is reported as success rather than as a failure
-    // the second admin has to understand.
+    // the second admin has to understand — and with the SAME wording
+    // the fresh-insert path below uses, since both paths land on the
+    // identical "connected, still needs the URL copied" state. They
+    // used to say different things for that same state; unified here.
     if (error.code === "23505") {
       revalidatePath(LEAD_CAPTURE_PATH);
-      return { success: true, message: "IndiaMART is connected." };
+      return { success: true, message: `${displayName} is connected. Copy the webhook URL below to finish setup.` };
     }
     console.error(`[lead-capture] connect failed (code: ${error.code}).`);
-    return { formError: "Could not connect IndiaMART. Please try again." };
+    return { formError: `Couldn't connect ${displayName}. Please try again.` };
   }
 
   revalidatePath(LEAD_CAPTURE_PATH);
-  return { success: true, message: "IndiaMART connected. Copy the webhook URL below." };
+  return { success: true, message: `${displayName} is connected. Copy the webhook URL below to finish setup.` };
 }
 
 /**
@@ -135,13 +154,13 @@ export async function regenerateWebhookTokenAction(
 
   if (error) {
     console.error(`[lead-capture] token regeneration failed (code: ${error.code}).`);
-    return { formError: "Could not regenerate the webhook URL. Please try again." };
+    return { formError: "Couldn't regenerate the webhook URL. Please try again." };
   }
 
   revalidatePath(LEAD_CAPTURE_PATH);
   return {
     success: true,
-    message: "New webhook URL generated. Update it in IndiaMART — the previous URL no longer works.",
+    message: `A new webhook URL has been generated. Update it in ${getSourceMetadata(CURRENT_SOURCE).displayName} — the previous one has stopped working.`,
   };
 }
 
@@ -168,16 +187,17 @@ export async function setIntegrationStatusAction(
 
   if (error) {
     console.error(`[lead-capture] status change failed (code: ${error.code}).`);
-    return { formError: "Could not change the connection status. Please try again." };
+    return { formError: "Couldn't change the connection status. Please try again." };
   }
 
   revalidatePath(LEAD_CAPTURE_PATH);
+  const displayName = getSourceMetadata(CURRENT_SOURCE).displayName;
   return {
     success: true,
     message:
       parsed.data.status === "Active"
-        ? "IndiaMART capture resumed."
-        : "IndiaMART capture paused. Incoming leads will be rejected until you resume it.",
+        ? `${displayName} capture is active again.`
+        : `${displayName} capture is paused. New leads won't be saved until you resume it.`,
   };
 }
 
@@ -244,7 +264,7 @@ export async function updateIntegrationSettingsAction(
       return { fieldErrors: { default_owner_id: "That stage or team member is no longer available." } };
     }
     console.error(`[lead-capture] settings save failed (code: ${updateError.code}).`);
-    return { formError: "Could not save these settings. Please try again." };
+    return { formError: "Couldn't save these settings. Please try again." };
   }
 
   // Read the current roster to diff against. RLS already scopes this to
@@ -276,7 +296,7 @@ export async function updateIntegrationSettingsAction(
 
     if (error) {
       console.error(`[lead-capture] roster removal failed (code: ${error.code}).`);
-      return { formError: "Could not update the round-robin list. Please try again." };
+      return { formError: "Couldn't update the round-robin list. Please try again." };
     }
   }
 
@@ -295,12 +315,10 @@ export async function updateIntegrationSettingsAction(
         return { fieldErrors: { participants: "One of those team members is no longer available." } };
       }
       console.error(`[lead-capture] roster insert failed (code: ${error.code}).`);
-      return { formError: "Could not update the round-robin list. Please try again." };
+      return { formError: "Couldn't update the round-robin list. Please try again." };
     }
   }
 
   revalidatePath(LEAD_CAPTURE_PATH);
   return { success: true, message: "Lead capture settings saved." };
 }
-
-export { initialIntegrationFormState };

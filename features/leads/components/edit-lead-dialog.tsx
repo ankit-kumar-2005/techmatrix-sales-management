@@ -124,6 +124,7 @@ export function EditLeadDialog({
               phone: lead.phone,
               whatsapp_phone: lead.whatsapp_phone,
               email: lead.email,
+              address: lead.address,
               company: lead.company,
               deal_value: lead.deal_value,
               expected_close_date: lead.expected_close_date,
