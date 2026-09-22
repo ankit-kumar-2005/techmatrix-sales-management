@@ -38,7 +38,7 @@ import { drainAutomationQueue } from "@/features/automations/lib/drain";
 export default async function AutomationsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ page?: string; q?: string }>;
+  searchParams: Promise<{ page?: string; q?: string; runsPage?: string }>;
 }) {
   const supabase = await createClient();
   const {
@@ -91,6 +91,7 @@ export default async function AutomationsPage({
 
   const params = await searchParams;
   const page = Number.parseInt(params.page ?? "1", 10);
+  const runsPage = Number.parseInt(params.runsPage ?? "1", 10);
   const search = params.q ?? "";
 
   const [list, runs, queue] = await Promise.all([
@@ -98,7 +99,7 @@ export default async function AutomationsPage({
       page: Number.isFinite(page) ? page : 1,
       search,
     }),
-    getRecentRuns(supabase, membership.customer.id),
+    getRecentRuns(supabase, membership.customer.id, { page: Number.isFinite(runsPage) ? runsPage : 1 }),
     getQueueSummary(supabase, membership.customer.id),
   ]);
 
@@ -153,8 +154,23 @@ export default async function AutomationsPage({
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_400px]">
         <section className="flex flex-col gap-3">
-          <h2 className="text-xs font-bold tracking-wide text-neutral-500 uppercase">Recent activity</h2>
-          <RunHistory runs={runs} nowMs={nowMs} queue={queue} />
+          <h2 className="text-xs font-bold tracking-wide text-neutral-500 uppercase">Execution history</h2>
+          <RunHistory
+            runs={runs.items}
+            nowMs={nowMs}
+            queue={queue}
+            devMode={process.env.NODE_ENV !== "production"}
+          />
+          {runs.pageCount > 1 ? (
+            <ListPager
+              page={runs.page}
+              pageCount={runs.pageCount}
+              totalCount={runs.total}
+              basePath="/automations"
+              itemLabel="run"
+              paramName="runsPage"
+            />
+          ) : null}
         </section>
 
         <section className="flex flex-col gap-3">

@@ -11,8 +11,9 @@ import {
 import { getVisibleTeamDirectory } from "@/features/leads/lib/get-team-directory";
 import { getFieldErrors } from "@/features/auth/lib/get-field-errors";
 import { generateWorkflowSchema, saveAutomationSchema, setAutomationStatusSchema } from "./schemas";
-import { getTriggerType, validateWorkflow } from "./lib/validate-workflow";
+import { getTriggerEventType, getTriggerType, validateWorkflow } from "./lib/validate-workflow";
 import { buildTeamOptions, generateWorkflow } from "./lib/generate-workflow";
+import { processAutomationEvents, WorkerNotConfiguredError } from "./lib/engine";
 import { MAX_AI_PROMPT_LENGTH } from "./config/safeguards";
 import type { AiBuilderState, AutomationFormState } from "./form-state";
 import type { AutomationOrigin, WorkflowDefinition } from "@/types/automation";
@@ -97,6 +98,7 @@ export async function saveAutomationAction(input: {
 
   const validation = validateWorkflow(definition);
   const triggerType = getTriggerType(definition as WorkflowDefinition);
+  const triggerEventType = getTriggerEventType(definition as WorkflowDefinition);
 
   if (!triggerType) {
     // Stored on the version row and matched in SQL by the engine, so a
@@ -178,6 +180,7 @@ export async function saveAutomationAction(input: {
     automation_id: automationId,
     version: nextVersion,
     trigger_type: triggerType,
+    trigger_event_type: triggerEventType,
     definition,
     created_by: user.id,
   });
@@ -335,4 +338,50 @@ export async function generateWorkflowAction(
   console.log(`[automations:ai] generation for customer ${membership.customer.id} returned ${result.status}.`);
 
   return { result };
+}
+
+/**
+ * DEV-ONLY manual trigger. Runs the exact same `processAutomationEvents()`
+ * the cron route and the opportunistic `after()` drain both call —
+ * AWAITED here, not fire-and-forget, so its result can be shown to the
+ * admin who asked for it immediately.
+ *
+ * WHY THIS EXISTS: `next dev` has no equivalent of Vercel Cron running
+ * in the background, so outside a deployed environment the opportunistic
+ * drain is the ONLY thing that ever processes an event — if it happens
+ * to miss (or fails because AUTOMATION_WORKER_TOKEN isn't set yet in
+ * this environment), a local admin previously had no way to retry
+ * short of waiting or creating another lead. This is that retry,
+ * on demand.
+ *
+ * REFUSED IN PRODUCTION FROM THE ACTION ITSELF, not only by the page
+ * omitting the button — the same "never trust the UI alone" discipline
+ * as every role check in this file. A production build reaching this
+ * function some other way still gets nothing.
+ */
+export async function processQueueNowAction(): Promise<AutomationFormState> {
+  const { denied } = await requireAdmin();
+  if (denied) return DENIED;
+
+  if (process.env.NODE_ENV === "production") {
+    return { formError: "This is a development-only action." };
+  }
+
+  try {
+    const result = await processAutomationEvents();
+    revalidatePath(AUTOMATIONS_PATH);
+    return {
+      success: true,
+      message:
+        result.claimed === 0
+          ? "Nothing was waiting to be processed."
+          : `Processed ${result.claimed} event${result.claimed === 1 ? "" : "s"}: ${result.succeeded} succeeded, ` +
+            `${result.skipped} skipped, ${result.stopped} stopped, ${result.failed} failed.`,
+    };
+  } catch (error) {
+    if (error instanceof WorkerNotConfiguredError) {
+      return { formError: error.message };
+    }
+    return { formError: "Unable to process the queue. Please try again." };
+  }
 }

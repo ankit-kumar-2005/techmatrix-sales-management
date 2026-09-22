@@ -7,6 +7,7 @@ import {
   getNoMembershipRedirect,
 } from "@/features/customers/lib/get-current-membership";
 import { getVisibleTeamDirectory } from "@/features/leads/lib/get-team-directory";
+import { ListPager } from "@/components/shared/list-pager";
 import { AutomationBuilder } from "@/features/automations/components/automation-builder";
 import { RunHistory } from "@/features/automations/components/run-history";
 import {
@@ -23,7 +24,13 @@ import {
  * this session, and RLS refuses the row regardless, so another tenant's
  * id produces the same not-found as a made-up one.
  */
-export default async function AutomationDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function AutomationDetailPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ runsPage?: string }>;
+}) {
   const supabase = await createClient();
   const {
     data: { user },
@@ -56,9 +63,15 @@ export default async function AutomationDetailPage({ params }: { params: Promise
     notFound();
   }
 
+  const { runsPage } = await searchParams;
+  const runsPageNum = Number.parseInt(runsPage ?? "1", 10);
+
   const [team, runs] = await Promise.all([
     getVisibleTeamDirectory(supabase),
-    getRecentRuns(supabase, membership.customer.id, { automationId: id }),
+    getRecentRuns(supabase, membership.customer.id, {
+      automationId: id,
+      page: Number.isFinite(runsPageNum) ? runsPageNum : 1,
+    }),
   ]);
 
   const activeVersion =
@@ -98,7 +111,17 @@ export default async function AutomationDetailPage({ params }: { params: Promise
 
       <section className="flex flex-col gap-3">
         <h2 className="text-xs font-bold tracking-wide text-neutral-500 uppercase">This automation&rsquo;s runs</h2>
-        <RunHistory runs={runs} nowMs={nowMs} showAutomationName={false} />
+        <RunHistory runs={runs.items} nowMs={nowMs} showAutomationName={false} />
+        {runs.pageCount > 1 ? (
+          <ListPager
+            page={runs.page}
+            pageCount={runs.pageCount}
+            totalCount={runs.total}
+            basePath={`/automations/${id}`}
+            itemLabel="run"
+            paramName="runsPage"
+          />
+        ) : null}
       </section>
     </div>
   );

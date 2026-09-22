@@ -1,4 +1,5 @@
 import { formatRelativeTime } from "@/utils/format";
+import { ProcessQueueNowButton } from "./process-queue-now-button";
 import type { AutomationRunListItem, AutomationRunStatus } from "@/types/automation";
 
 type RunHistoryProps = {
@@ -7,6 +8,10 @@ type RunHistoryProps = {
   /** Hide the automation name when the list is already scoped to one. */
   showAutomationName?: boolean;
   queue?: { pending: number; dead: number };
+  /** Set by the page from `NODE_ENV`, never guessed here — shows the
+   *  dev-only manual "process now" trigger. See ProcessQueueNowButton
+   *  for why this exists: local `next dev` has no cron equivalent. */
+  devMode?: boolean;
 };
 
 const STATUS_STYLE: Record<AutomationRunStatus, { label: string; dot: string; text: string }> = {
@@ -26,11 +31,11 @@ const STATUS_STYLE: Record<AutomationRunStatus, { label: string; dot: string; te
  * way an admin can trust it is if it can always account for itself,
  * including for the times it decided to do nothing.
  */
-export function RunHistory({ runs, nowMs, showAutomationName = true, queue }: RunHistoryProps) {
+export function RunHistory({ runs, nowMs, showAutomationName = true, queue, devMode = false }: RunHistoryProps) {
   return (
     <div className="flex flex-col gap-3">
-      {queue && (queue.pending > 0 || queue.dead > 0) ? (
-        <div className="flex flex-wrap gap-4 rounded-2xl bg-white px-4 py-3 shadow-sm ring-1 ring-black/5">
+      {queue && (queue.pending > 0 || queue.dead > 0 || devMode) ? (
+        <div className="flex flex-wrap items-center gap-4 rounded-2xl bg-white px-4 py-3 shadow-sm ring-1 ring-black/5">
           {queue.pending > 0 ? (
             <p className="text-xs text-neutral-600">
               <span className="font-bold text-neutral-900">{queue.pending}</span> waiting to be processed
@@ -41,6 +46,7 @@ export function RunHistory({ runs, nowMs, showAutomationName = true, queue }: Ru
               <span className="font-bold">{queue.dead}</span> gave up after repeated failures
             </p>
           ) : null}
+          {devMode ? <ProcessQueueNowButton /> : null}
         </div>
       ) : null}
 

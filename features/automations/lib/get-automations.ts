@@ -173,15 +173,51 @@ export function getEditableDefinition(detail: AutomationDetail): WorkflowDefinit
 
 export const RUNS_PER_PAGE = 20;
 
+export type AutomationRunPage = {
+  items: AutomationRunListItem[];
+  total: number;
+  page: number;
+  pageCount: number;
+};
+
+/**
+ * Execution History, paginated server-side.
+ *
+ * ORDERED started_at DESC, id DESC — the tie-breaker matters. Two runs
+ * recorded within the same clock tick (a real possibility: several
+ * automations reacting to one event all finish inside the same
+ * millisecond) would otherwise have no defined relative order, and
+ * `.range()` pagination over an ambiguous order can show the same row on
+ * two pages or skip one entirely when rows sharing a timestamp straddle
+ * a page boundary. `id` is a `gen_random_uuid()`, so it carries no
+ * meaning of its own — it is only here to make the order total.
+ *
+ * RANGE (LIMIT/OFFSET), NOT A CURSOR — the same choice getAutomationsPage
+ * already made for the same reason: this app has no infinite-scroll
+ * pattern anywhere, every existing pager is Previous/Next with a page
+ * count and a "jump to page N" affordance implied by that count, and a
+ * cursor cannot support that without carrying a full cursor stack. Run
+ * history for one automation is bounded (safeguards cap how much a
+ * single tenant can produce per event, and this table is never queried
+ * unbounded), so the cost `.range()` pays for large-offset pages is not
+ * a real concern here the way it would be for, say, a public activity
+ * feed with millions of rows.
+ */
 export async function getRecentRuns(
   supabase: SupabaseClient,
   customerId: string,
-  options: { automationId?: string; limit?: number } = {},
-): Promise<AutomationRunListItem[]> {
+  options: { automationId?: string; page?: number; limit?: number } = {},
+): Promise<AutomationRunPage> {
+  const perPage = options.limit ?? RUNS_PER_PAGE;
+  const page = Math.max(1, Math.floor(options.page ?? 1) || 1);
+  const from = (page - 1) * perPage;
+  const to = from + perPage - 1;
+
   let query = supabase
     .from("customer_automation_runs")
     .select(
       "id, automation_id, version_id, status, stop_reason, error_detail, actions_executed, started_at, finished_at",
+      { count: "exact" },
     )
     .eq("customer_id", customerId);
 
@@ -189,12 +225,15 @@ export async function getRecentRuns(
     query = query.eq("automation_id", options.automationId);
   }
 
-  const { data, error } = await query
+  const { data, error, count } = await query
     .order("started_at", { ascending: false })
-    .limit(options.limit ?? RUNS_PER_PAGE);
+    .order("id", { ascending: false })
+    .range(from, to);
+
+  const empty: AutomationRunPage = { items: [], total: 0, page, pageCount: 1 };
 
   if (error || !data) {
-    return [];
+    return empty;
   }
 
   const rows = data as Array<{
@@ -209,8 +248,11 @@ export async function getRecentRuns(
     finished_at: string | null;
   }>;
 
+  const total = count ?? rows.length;
+  const pageCount = Math.max(1, Math.ceil(total / perPage));
+
   if (rows.length === 0) {
-    return [];
+    return { items: [], total, page, pageCount };
   }
 
   // Names and version numbers resolved in two small lookups rather than
@@ -238,18 +280,23 @@ export async function getRecentRuns(
     ((versions.data ?? []) as Array<{ id: string; version: number }>).map((row) => [row.id, row.version]),
   );
 
-  return rows.map((row) => ({
-    id: row.id,
-    automation_id: row.automation_id,
-    automation_name: nameById.get(row.automation_id) ?? "Removed automation",
-    version: versionById.get(row.version_id) ?? 0,
-    status: row.status,
-    stop_reason: row.stop_reason,
-    error_detail: row.error_detail,
-    actions_executed: row.actions_executed,
-    started_at: row.started_at,
-    finished_at: row.finished_at,
-  }));
+  return {
+    items: rows.map((row) => ({
+      id: row.id,
+      automation_id: row.automation_id,
+      automation_name: nameById.get(row.automation_id) ?? "Removed automation",
+      version: versionById.get(row.version_id) ?? 0,
+      status: row.status,
+      stop_reason: row.stop_reason,
+      error_detail: row.error_detail,
+      actions_executed: row.actions_executed,
+      started_at: row.started_at,
+      finished_at: row.finished_at,
+    })),
+    total,
+    page,
+    pageCount,
+  };
 }
 
 /** Queue health for the automations page — how much is waiting and how

@@ -1,5 +1,5 @@
 import { MAX_EDGES_PER_WORKFLOW, MAX_NODES_PER_WORKFLOW } from "../config/safeguards";
-import { getRegistryEntry } from "../registry/definitions";
+import { ACTION_LOOP, DECISION_DEFAULT_BRANCH, getRegistryEntry, type DecisionOutcome } from "../registry/definitions";
 import { workflowDefinitionSchema } from "../schemas";
 import type { ValidationIssue, ValidationResult, WorkflowDefinition } from "@/types/automation";
 
@@ -132,8 +132,12 @@ export function validateWorkflow(definition: unknown): ValidationResult {
     edgeKeys.add(key);
   }
 
-  // 6. Condition branches. A condition that does not say which of its
-  //    two outputs an edge leaves from is a coin flip at execution time.
+  // 6. Branch outputs. A branching node whose edge does not say which of
+  //    its outputs it leaves from is a coin flip at execution time.
+  //    Condition and decision are BOTH branching kinds — a condition's
+  //    branch is always exactly "true"/"false", a decision's is one of
+  //    its own outcome ids (or the fixed DECISION_DEFAULT_BRANCH) — and
+  //    every other kind has exactly one, unbranched output.
   for (const node of nodes) {
     const outgoing = edges.filter((edge) => edge.source === node.id);
 
@@ -151,8 +155,32 @@ export function validateWorkflow(definition: unknown): ValidationResult {
           add(node.id, `The ${branch === "true" ? "yes" : "no"} output can only lead to one node.`);
         }
       }
+    } else if (node.kind === "decision") {
+      // A malformed config (caught in step 3 already) has no reliable
+      // outcome list to check branches against — skip rather than
+      // produce noise derived from a shape that is already reported as
+      // broken.
+      const outcomes = Array.isArray((node.config as { outcomes?: unknown }).outcomes)
+        ? ((node.config as { outcomes: DecisionOutcome[] }).outcomes)
+        : null;
+      if (outcomes) {
+        const validBranches = new Set<string>([...outcomes.map((outcome) => outcome.id), DECISION_DEFAULT_BRANCH]);
+        for (const edge of outgoing) {
+          if (!edge.branch || !validBranches.has(edge.branch)) {
+            add(node.id, "Each line leaving a decision has to come from one of its named outcomes, or Otherwise.");
+          }
+        }
+        for (const branch of validBranches) {
+          if (outgoing.filter((edge) => edge.branch === branch).length > 1) {
+            add(node.id, `One output of this decision leads to more than one node. Each output can only lead to one.`);
+          }
+        }
+      }
+      if (outgoing.length === 0) {
+        add(node.id, "This decision does not lead anywhere. Connect at least one of its outcomes.");
+      }
     } else if (outgoing.some((edge) => edge.branch)) {
-      add(node.id, "Only a condition has yes and no outputs.");
+      add(node.id, "Only a condition or a decision has more than one output.");
     }
   }
 
@@ -179,7 +207,83 @@ export function validateWorkflow(definition: unknown): ValidationResult {
     }
   }
 
-  // 8. Cycles IN THE GRAPH ITSELF. Distinct from the cross-automation
+  // 8. Node-reference fields — every Task/Contact Update/Deactivate
+  //    action names an earlier Create node by id (see the migration's
+  //    own design note 7 and registry/executors.ts's resolveTargetKey).
+  //    Three things must all be true for that reference to ever resolve
+  //    to anything at runtime, and a violation of any of them is checked
+  //    here rather than discovered as a permanent target_not_found at
+  //    3am: the named node must exist, it must be the right KIND of
+  //    Create node (never an arbitrary node id), and it must be
+  //    reachable by at least one path ending at THIS node — a reference
+  //    to a node nothing can ever route through could never resolve, no
+  //    matter what a lead's facts are.
+  for (const node of nodes) {
+    const entry = getRegistryEntry(node.type);
+    if (!entry) continue;
+
+    for (const field of entry.fields) {
+      if (field.kind !== "node-reference") continue;
+
+      const sourceNodeId = (node.config as Record<string, unknown>)[field.name];
+      if (typeof sourceNodeId !== "string" || sourceNodeId.trim() === "") {
+        // Already reported by the schema check in step 3 (the field is
+        // required) — not repeated here.
+        continue;
+      }
+
+      const referenced = nodeById.get(sourceNodeId);
+      if (!referenced) {
+        add(node.id, `"${field.label}" points at a step that no longer exists on this canvas.`);
+        continue;
+      }
+      if (field.targetType && referenced.type !== field.targetType) {
+        add(node.id, `"${field.label}" must point at a ${getRegistryEntry(field.targetType)?.label ?? field.targetType} step.`);
+        continue;
+      }
+      if (!isAncestor(sourceNodeId, node.id, edges)) {
+        add(node.id, `"${field.label}" points at a step no path from here can ever reach — connect it upstream of this node first.`);
+      }
+    }
+  }
+
+  // 9. A Loop's body — checked structurally, at save time, rather than
+  //    discovered as "no step connected to run" at 3am. A Loop's body is
+  //    the SINGLE node its own output connects to (see planWorkflow's
+  //    own note on why that is graph structure, not a config field) —
+  //    which means it has to actually BE exactly that: one edge out, to
+  //    a real action, never another Loop (nesting would need each Loop
+  //    to capture its own body during the SAME walk that is already
+  //    capturing the outer one, which planWorkflow does not do — a
+  //    nested Loop would silently fail at runtime instead, exactly the
+  //    kind of half-built behaviour this refuses at the door instead),
+  //    and not an action anything else also points at, so it can never
+  //    be ambiguous whether a given node belongs to a loop or is a
+  //    normal step something else also reaches.
+  for (const node of nodes) {
+    if (node.type !== ACTION_LOOP) continue;
+    const outgoing = edges.filter((edge) => edge.source === node.id);
+    if (outgoing.length !== 1) {
+      add(node.id, "A Loop must connect to exactly one step to repeat — no more, no fewer.");
+      continue;
+    }
+    const bodyId = outgoing[0].target;
+    const bodyNode = nodeById.get(bodyId);
+    if (!bodyNode || bodyNode.kind !== "action") {
+      add(node.id, "A Loop's step to repeat must be an action — not a condition, decision, or another Loop.");
+      continue;
+    }
+    if (bodyNode.type === ACTION_LOOP) {
+      add(node.id, "A Loop cannot repeat another Loop — nesting isn't available yet.");
+      continue;
+    }
+    const bodyIncoming = edges.filter((edge) => edge.target === bodyId);
+    if (bodyIncoming.length > 1) {
+      add(node.id, "The step this Loop repeats cannot also be reached any other way on this canvas.");
+    }
+  }
+
+  // 10. Cycles IN THE GRAPH ITSELF. Distinct from the cross-automation
   //    loop safeguards in the engine, which bound what happens between
   //    automations at runtime. This one is structural: a definition that
   //    loops back on itself would make the engine's own walk
@@ -190,6 +294,42 @@ export function validateWorkflow(definition: unknown): ValidationResult {
   }
 
   return { ok: issues.length === 0, issues };
+}
+
+/** Is `candidateId` reachable by walking BACKWARD (target -> source)
+ *  from `nodeId` — i.e. does at least one path from candidateId to
+ *  nodeId exist? Used only for node-reference fields, where "connected
+ *  upstream, on at least one path" is the bar (not "on every path" —
+ *  a reference that only resolves on some branches is ordinary
+ *  conditional logic, handled at runtime by target_not_found, not a
+ *  validation error). Plain BFS over the reversed edge set; the graph
+ *  is already confirmed acyclic by the time this matters in practice,
+ *  but this terminates correctly either way since `visited` is checked
+ *  before enqueueing. */
+function isAncestor(candidateId: string, nodeId: string, edges: ReadonlyArray<{ source: string; target: string }>): boolean {
+  const incoming = new Map<string, string[]>();
+  for (const edge of edges) {
+    const list = incoming.get(edge.target);
+    if (list) {
+      list.push(edge.source);
+    } else {
+      incoming.set(edge.target, [edge.source]);
+    }
+  }
+
+  const visited = new Set<string>([nodeId]);
+  const queue = [nodeId];
+  while (queue.length > 0) {
+    const current = queue.shift() as string;
+    for (const parent of incoming.get(current) ?? []) {
+      if (parent === candidateId) return true;
+      if (!visited.has(parent)) {
+        visited.add(parent);
+        queue.push(parent);
+      }
+    }
+  }
+  return false;
 }
 
 /** Iterative DFS with an explicit colour map — iterative rather than
@@ -248,4 +388,23 @@ function hasCycle(nodeIds: string[], edges: ReadonlyArray<{ source: string; targ
  *  engine can match events in SQL instead of parsing every definition. */
 export function getTriggerType(definition: WorkflowDefinition): string | null {
   return definition.nodes.find((node) => node.kind === "trigger")?.type ?? null;
+}
+
+/**
+ * The trigger's configured eventType ('created' | 'updated' |
+ * 'created_or_updated'), for storing on the version row as
+ * trigger_event_type — the same denormalize-for-cheap-SQL-matching move
+ * getTriggerType already makes, extended to the second fact the engine
+ * now needs to filter on before it ever parses `definition`.
+ *
+ * Defaults to "created" for a trigger with no eventType at all — not a
+ * fallback invented here, but the same default leadCreatedConfigSchema
+ * itself declares, so a definition saved before this field existed and
+ * one that explicitly chose "created" are indistinguishable, which is
+ * exactly correct: they always meant the same thing.
+ */
+export function getTriggerEventType(definition: WorkflowDefinition): "created" | "updated" | "created_or_updated" {
+  const trigger = definition.nodes.find((node) => node.kind === "trigger");
+  const eventType = trigger?.config.eventType;
+  return eventType === "updated" || eventType === "created_or_updated" ? eventType : "created";
 }

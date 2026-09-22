@@ -85,7 +85,7 @@ async function main() {
       ...overrides,
     };
     const { rows } = await db.query(
-      `select public.create_automation_task($1,$2,$3,$4,$5,'Subj',null,'Call','High',current_date,$6,$7,$8) as r`,
+      `select public.create_automation_task($1,$2,$3,$4,$5,'Subj',null,'Call','High',current_date,$6,$7,$8,'00000000-0000-4000-8000-000000000001','00000000-0000-4000-8000-000000000002',0) as r`,
       [args.token, args.customer, args.lead, args.automation, args.key, args.mode, args.assignee, args.pool],
     );
     return rows[0].r;
@@ -210,11 +210,11 @@ async function main() {
   await c2.connect();
   const [d1, d2] = await Promise.all([
     c1.query(
-      `select public.create_automation_task($1,$2,$3,$4,$5,'Dup',null,'Call','High',current_date,'Fixed',$6,'{}') as r`,
+      `select public.create_automation_task($1,$2,$3,$4,$5,'Dup',null,'Call','High',current_date,'Fixed',$6,'{}','00000000-0000-4000-8000-000000000001','00000000-0000-4000-8000-000000000002',0) as r`,
       [T, ids.custA, ids.leadA, active.automationId, dupKey, ids.repA],
     ),
     c2.query(
-      `select public.create_automation_task($1,$2,$3,$4,$5,'Dup',null,'Call','High',current_date,'Fixed',$6,'{}') as r`,
+      `select public.create_automation_task($1,$2,$3,$4,$5,'Dup',null,'Call','High',current_date,'Fixed',$6,'{}','00000000-0000-4000-8000-000000000001','00000000-0000-4000-8000-000000000002',0) as r`,
       [T, ids.custA, ids.leadA, active.automationId, dupKey, ids.repA],
     ),
   ]);
@@ -241,7 +241,7 @@ async function main() {
   const assigned = [];
   for (let i = 0; i < 5; i += 1) {
     const { rows } = await db.query(
-      `select public.create_automation_task($1,$2,$3,$4,$5,'RR',null,'Call','High',current_date,'RoundRobin',null,$6) as r`,
+      `select public.create_automation_task($1,$2,$3,$4,$5,'RR',null,'Call','High',current_date,'RoundRobin',null,$6,'00000000-0000-4000-8000-000000000001','00000000-0000-4000-8000-000000000002',0) as r`,
       [T, ids.custA, ids.leadA, rr.automationId, `rr-${i}`, pool],
     );
     if (rows[0].r !== "created") {
@@ -262,7 +262,7 @@ async function main() {
     rr.automationId,
   ]);
   await db.query(
-    `select public.create_automation_task($1,$2,$3,$4,$5,'RR',null,'Call','High',current_date,'RoundRobin',null,$6)`,
+    `select public.create_automation_task($1,$2,$3,$4,$5,'RR',null,'Call','High',current_date,'RoundRobin',null,$6,'00000000-0000-4000-8000-000000000001','00000000-0000-4000-8000-000000000002',0)`,
     [T, ids.custA, ids.leadA, rr.automationId, `rr-0`, pool],
   );
   const after = await db.query(`select last_assigned_to from public.customer_automations where id = $1`, [
@@ -281,7 +281,7 @@ async function main() {
     status: "Active",
   });
   const { rows: inactiveOnly } = await db.query(
-    `select public.create_automation_task($1,$2,$3,$4,$5,'RR',null,'Call','High',current_date,'RoundRobin',null,$6) as r`,
+    `select public.create_automation_task($1,$2,$3,$4,$5,'RR',null,'Call','High',current_date,'RoundRobin',null,$6,'00000000-0000-4000-8000-000000000001','00000000-0000-4000-8000-000000000002',0) as r`,
     [T, ids.custA, ids.leadA, rrInactive.automationId, "rr-inactive", [ids.inactiveA]],
   );
   check(
@@ -291,7 +291,7 @@ async function main() {
     "8.7 (see below) rotation of only-inactive members",
   );
   const { rows: ioRows } = await db.query(
-    `select public.create_automation_task($1,$2,$3,$4,$5,'RR',null,'Call','High',current_date,'RoundRobin',null,$6) as r`,
+    `select public.create_automation_task($1,$2,$3,$4,$5,'RR',null,'Call','High',current_date,'RoundRobin',null,$6,'00000000-0000-4000-8000-000000000001','00000000-0000-4000-8000-000000000002',0) as r`,
     [T, ids.custA, ids.leadA, rrInactive.automationId, "rr-inactive-2", [ids.inactiveA]],
   );
   check(
@@ -487,7 +487,7 @@ async function main() {
   const wrong = "0".repeat(64);
   const refusals = [
     [`select public.claim_automation_events($1, 5, 300, 3)`, "claim", (r) => r.rowCount === 0],
-    [`select public.get_active_automations($1, $2, 'lead.created')`, "get_active_automations", (r) => r.rowCount === 0],
+    [`select public.get_active_automations($1, $2, 'lead.created', 'created')`, "get_active_automations", (r) => r.rowCount === 0],
     [`select public.get_automation_lineage($1, $2)`, "get_automation_lineage", (r) => r.rowCount === 0],
     [`select public.get_automation_lead_facts($1, $2, $3)`, "get_automation_lead_facts", (r) => r.rowCount === 0],
   ];
@@ -497,7 +497,7 @@ async function main() {
     check(ok(r), `5.7 ${label} returns nothing for a wrong token`);
   }
   const wrongTask = await db.query(
-    `select public.create_automation_task($1,$2,$3,$4,'wt','S',null,'Call','High',current_date,'Fixed',$5,'{}') as r`,
+    `select public.create_automation_task($1,$2,$3,$4,'wt','S',null,'Call','High',current_date,'Fixed',$5,'{}','00000000-0000-4000-8000-000000000001','00000000-0000-4000-8000-000000000002',0) as r`,
     [wrong, ids.custA, ids.leadA, active.automationId, ids.repA],
   );
   check(wrongTask.rows[0].r === "unauthorized", "5.8 create_automation_task refuses a wrong token");

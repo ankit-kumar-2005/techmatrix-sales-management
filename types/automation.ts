@@ -19,7 +19,16 @@ export type AutomationEventStatus = "pending" | "processing" | "succeeded" | "fa
 
 export type AutomationRunStatus = "succeeded" | "failed" | "skipped" | "stopped_by_safeguard";
 
-export type AutomationNodeKind = "trigger" | "condition" | "action";
+/**
+ * "decision" and "assignment" both branch/act like "condition" and
+ * "action" always did — a Decision is a condition with more than two
+ * named outputs instead of a fixed yes/no, and an Assignment is a
+ * pass-through step (one input, one output, no branch) that sets a
+ * workflow variable rather than writing to the database. Neither is a
+ * new WALK MECHANISM, just a generalisation of the two that already
+ * existed — see plan-workflow.ts.
+ */
+export type AutomationNodeKind = "trigger" | "condition" | "decision" | "assignment" | "action";
 
 /** One node on the canvas. `config` is validated against the registry
  *  entry named by `type` — never executed, never interpreted as code. */
@@ -36,8 +45,15 @@ export type WorkflowEdge = {
   id: string;
   source: string;
   target: string;
-  /** Set on edges leaving a condition: which branch this edge is. */
-  branch?: "true" | "false";
+  /**
+   * Set on edges leaving a branching node (condition or decision):
+   * which output this edge is. A condition's branch is always "true" or
+   * "false"; a decision's branch is one of its own outcome ids, or the
+   * fixed string "default" for the otherwise path. Generalised from a
+   * two-value enum to any string for exactly that reason — see
+   * MAX_BRANCH_ID_LENGTH.
+   */
+  branch?: string;
 };
 
 /** The whole graph, as stored in customer_automation_versions.definition. */

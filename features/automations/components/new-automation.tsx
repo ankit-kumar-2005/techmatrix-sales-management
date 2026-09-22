@@ -6,7 +6,6 @@ import { MessageBanner } from "@/components/shared/message-banner";
 import { generateWorkflowAction } from "../actions";
 import { initialAiBuilderState } from "../form-state";
 import { MAX_AI_PROMPT_LENGTH } from "../config/safeguards";
-import { ACTION_TASK_CREATE, TRIGGER_LEAD_CREATED, getRegistryEntry } from "../registry/definitions";
 import { AutomationBuilder } from "./automation-builder";
 import type { TeamDirectoryEntry } from "@/types/lead";
 import type { AutomationOrigin, WorkflowDefinition } from "@/types/automation";
@@ -54,11 +53,12 @@ export function NewAutomation({ team }: NewAutomationProps) {
     setOrigin("Manual");
     setName("");
     setDescription("");
-    // A starter trigger rather than a genuinely empty canvas. An empty
-    // React Flow pane gives no clue what to do first, and every valid
-    // workflow needs exactly this node anyway — so it is pre-placed and
-    // fully editable, not a template with opinions baked in.
-    setDefinition(buildStarterDefinition());
+    // A GENUINELY empty canvas — no pre-seeded trigger or action. The
+    // builder's own empty state (the big "+ Start with a trigger"
+    // button, see automation-builder.tsx) is what invites the first
+    // node; that button, not this function, is what a fresh workflow's
+    // starting shape is decided by.
+    setDefinition(null);
     setMode("build");
   }
 
@@ -226,33 +226,4 @@ function AiDoor({
       ) : null}
     </section>
   );
-}
-
-/** The blank-canvas starting point: the one node every workflow must
- *  have, with the registry's own defaults. Built from the registry
- *  rather than written out, so it cannot drift from what the palette
- *  would have added. */
-function buildStarterDefinition(): WorkflowDefinition {
-  const trigger = getRegistryEntry(TRIGGER_LEAD_CREATED);
-  const action = getRegistryEntry(ACTION_TASK_CREATE);
-
-  return {
-    nodes: [
-      {
-        id: "n-trigger",
-        kind: "trigger",
-        type: TRIGGER_LEAD_CREATED,
-        position: { x: 0, y: 0 },
-        config: { ...(trigger?.defaultConfig ?? {}) },
-      },
-      {
-        id: "n-action",
-        kind: "action",
-        type: ACTION_TASK_CREATE,
-        position: { x: 320, y: 0 },
-        config: { ...(action?.defaultConfig ?? {}) },
-      },
-    ],
-    edges: [{ id: "e-1", source: "n-trigger", target: "n-action" }],
-  };
 }

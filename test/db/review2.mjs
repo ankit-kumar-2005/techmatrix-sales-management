@@ -40,7 +40,7 @@ async function main() {
             -- named explicitly: it matches neither pattern, and leaving
             -- it out silently exempted the one SECURITY DEFINER trigger
             -- function from this whole audit.
-            or p.proname = 'enqueue_lead_created_event')
+            or p.proname = 'enqueue_lead_automation_event')
      order by p.proname
   `);
 
@@ -60,7 +60,7 @@ async function main() {
   for (const name of [
     "verify_automation_worker",
     "rotate_automation_worker_token",
-    "enqueue_lead_created_event",
+    "enqueue_lead_automation_event",
     "set_automation_event_root",
   ]) {
     const fn = fns.rows.find((r) => r.proname === name);
@@ -76,7 +76,7 @@ async function main() {
       from pg_proc p join pg_namespace n on n.oid = p.pronamespace
      where n.nspname = 'public'
        and (p.proname like '%automation%' or p.proname like '%worker%'
-            or p.proname = 'enqueue_lead_created_event')
+            or p.proname = 'enqueue_lead_automation_event')
        and (p.proacl is null
             or exists (select 1 from aclexplode(p.proacl) a
                         where a.grantee = 0 and a.privilege_type = 'EXECUTE'))
@@ -145,7 +145,7 @@ async function main() {
   ]);
   check(q3.rows[0].n === 0, `7.12 Customer B has no Active automation → no event for its lead (got ${q3.rows[0].n})`);
 
-  // REGRESSION GUARD for the grant hardening. enqueue_lead_created_event
+  // REGRESSION GUARD for the grant hardening. enqueue_lead_automation_event
   // had its EXECUTE revoked from public/anon/authenticated. If PostgreSQL
   // checked that privilege when the trigger FIRES rather than when it is
   // created, that change would have broken lead creation for every real
@@ -188,19 +188,19 @@ async function main() {
   ]);
   check(crossFacts.rowCount === 0, "7.17 Customer A's lead is invisible under Customer B's id");
 
-  const actives = await db.query(`select * from public.get_active_automations($1,$2,'lead.created')`, [
+  const actives = await db.query(`select * from public.get_active_automations($1,$2,'lead.created','created')`, [
     T,
     c.customer_id,
   ]);
   check(actives.rowCount === 1, `7.18 the worker sees one Active automation (got ${actives.rowCount})`);
-  const crossActives = await db.query(`select * from public.get_active_automations($1,$2,'lead.created')`, [
+  const crossActives = await db.query(`select * from public.get_active_automations($1,$2,'lead.created','created')`, [
     T,
     ids.custB,
   ]);
   check(crossActives.rowCount === 0, "7.19 Customer B's automations are not returned for Customer A's event");
 
   const taskResult = await db.query(
-    `select public.create_automation_task($1,$2,$3,$4,$5,'Call {{x}}',null,'Call','High',current_date + 1,'Fixed',$6,'{}') as r`,
+    `select public.create_automation_task($1,$2,$3,$4,$5,'Call {{x}}',null,'Call','High',current_date + 1,'Fixed',$6,'{}','00000000-0000-4000-8000-000000000001','00000000-0000-4000-8000-000000000002',0) as r`,
     [T, c.customer_id, c.subject_id, actives.rows[0].automation_id, `e2e:${c.id}`, ids.repA],
   );
   check(taskResult.rows[0].r === "created", `7.20 a REAL task is created (got "${taskResult.rows[0].r}")`);
@@ -257,7 +257,7 @@ async function main() {
   const newWorks = await db.query(`select * from public.claim_automation_events($1, 1, 300, 3)`, [T2]);
   check(newWorks.rowCount === 0 || true, "5.11 the new token is accepted");
   const oldStillWorks = await db.query(
-    `select public.create_automation_task($1,$2,$3,$4,'overlap','S',null,'Call','High',current_date,'Fixed',$5,'{}') as r`,
+    `select public.create_automation_task($1,$2,$3,$4,'overlap','S',null,'Call','High',current_date,'Fixed',$5,'{}','00000000-0000-4000-8000-000000000001','00000000-0000-4000-8000-000000000002',0) as r`,
     [T, ids.custA, leadId, auto.automationId, ids.repA],
   );
   check(
@@ -269,7 +269,7 @@ async function main() {
   const { rows: r3 } = await db.query(`select public.rotate_automation_worker_token(interval '0') as t`);
   const T3 = r3[0].t;
   const revoked = await db.query(
-    `select public.create_automation_task($1,$2,$3,$4,'revoked','S',null,'Call','High',current_date,'Fixed',$5,'{}') as r`,
+    `select public.create_automation_task($1,$2,$3,$4,'revoked','S',null,'Call','High',current_date,'Fixed',$5,'{}','00000000-0000-4000-8000-000000000001','00000000-0000-4000-8000-000000000002',0) as r`,
     [T2, ids.custA, leadId, auto.automationId, ids.repA],
   );
   check(
@@ -277,7 +277,7 @@ async function main() {
     `5.13 rotating with interval '0' revokes the previous token immediately (got "${revoked.rows[0].r}")`,
   );
   const newestWorks = await db.query(
-    `select public.create_automation_task($1,$2,$3,$4,'newest','S',null,'Call','High',current_date,'Fixed',$5,'{}') as r`,
+    `select public.create_automation_task($1,$2,$3,$4,'newest','S',null,'Call','High',current_date,'Fixed',$5,'{}','00000000-0000-4000-8000-000000000001','00000000-0000-4000-8000-000000000002',0) as r`,
     [T3, ids.custA, leadId, auto.automationId, ids.repA],
   );
   check(newestWorks.rows[0].r === "created", `5.14 the newest token works (got "${newestWorks.rows[0].r}")`);

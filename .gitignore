@@ -39,3 +39,11 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# disposable embedded-postgres test cluster (test/db/boot.mjs) — a real,
+# throwaway PostgreSQL data directory, not source; was accidentally
+# committed once (see the Phase 2 expansion report) and should never be
+# tracked again.
+/test/db/pgdata
+/test/db/pg.pid
+/test/db/pwfile.txt

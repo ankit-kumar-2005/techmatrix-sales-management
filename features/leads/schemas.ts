@@ -1,15 +1,44 @@
 import { z } from "zod";
+import { INTEGRATION_SOURCES } from "@/types/integration";
 import { isRealIsoDate } from "@/utils/iso-date";
 
 /**
- * `source` has no CHECK constraint in the schema (still a plain nullable
- * text column) — this is a curated list of common values for a nicer
- * picker, not a DB-enforced enum, so a value outside this list can still
- * reach the database from anywhere else without issue. Shared between
- * the Create Lead form and the Pipeline Source filter so both offer the
- * same options.
+ * THE ONE CANONICAL LIST OF LEAD SOURCE VALUES — every place in the app
+ * that lets someone pick or filter by a lead's source reads this array,
+ * not a list of its own. `source` has no CHECK constraint in the schema
+ * (still a plain nullable text column) — this is a curated list for a
+ * nicer picker, not a DB-enforced enum, so a value outside this list can
+ * still reach the database from anywhere else without issue.
+ *
+ * BUILT FROM `INTEGRATION_SOURCES`, NOT A SEPARATE COPY OF IT. Every
+ * connected integration (IndiaMART today) is also a value this list
+ * offers, so a future integration becomes pickable here automatically
+ * the moment it is added there — the same "one list, not two that can
+ * drift" reasoning `INTEGRATION_SOURCES` itself already documents.
+ *
+ * A LEAD WITH NO SOURCE PICKED HAS `source = null`, NEVER THE LITERAL
+ * TEXT "Manual". There is deliberately no "Manual" (or any other)
+ * placeholder value in this list for that case — matching "no source"
+ * is expressed with an emptiness check (e.g. the automation condition
+ * builder's "is empty" operator on the Source field), not by picking a
+ * fake value that would have to be excluded from every real comparison
+ * everywhere this list is used. An earlier version of the automation
+ * builder got exactly this wrong: it stored the literal string "Manual"
+ * into a filter list and compared it against a lead's real `source`
+ * column, which is NULL for a hand-entered lead — a comparison that
+ * could never match. Fixed by removing the fake value at the source
+ * (this list) rather than teaching every consumer to special-case it.
  */
-export const LEAD_SOURCES = ["Referral", "Website", "Google Ads", "LinkedIn", "Cold Outreach", "Event", "Other"];
+export const LEAD_SOURCES: readonly string[] = [
+  ...INTEGRATION_SOURCES,
+  "Referral",
+  "Website",
+  "Google Ads",
+  "LinkedIn",
+  "Cold Outreach",
+  "Event",
+  "Other",
+];
 
 const optionalText = () =>
   z

@@ -1,6 +1,7 @@
 import { createWebhookClient } from "@/lib/supabase/webhook";
 import {
   EVENT_BATCH_SIZE,
+  MAX_ACTIONS_PER_EVENT,
   MAX_RETRIES_PER_EVENT,
   MIN_WORKER_TOKEN_LENGTH,
   PROCESSING_TIMEOUT_SECONDS,
@@ -12,7 +13,11 @@ import {
   checkAncestry,
   checkEventDepth,
 } from "./safeguards-check";
-import { planWorkflow, type LeadFacts } from "./plan-workflow";
+import { planWorkflow, type EventOperation, type LeadFacts, type TriggerObject, type RecordVariableValue } from "./plan-workflow";
+import { LEAD_FIELD_REGISTRY } from "../registry/fields";
+import { TASK_FIELD_REGISTRY } from "../registry/task-fields";
+import { CONTACT_FIELD_REGISTRY } from "../registry/contact-fields";
+import type { FieldRegistryEntry } from "../registry/fields";
 import { validateWorkflow } from "./validate-workflow";
 import type { WorkflowDefinition } from "@/types/automation";
 
@@ -55,6 +60,17 @@ type ClaimedEvent = {
   depth: number;
   attempts: number;
   payload: Record<string, unknown>;
+  /** 'created' or 'updated' — which lifecycle event this row represents,
+   *  matched against a trigger's own eventType before anything else
+   *  runs. See plan-workflow.ts's matchesEventType. */
+  operation: EventOperation;
+  /** to_jsonb(OLD)/to_jsonb(NEW) at the moment of the event, minus
+   *  customer_id/id. old_values is null for a `created` event — there is
+   *  no prior state. Both are SNAPSHOTS: authoritative for what a
+   *  condition should evaluate against, deliberately not re-read live —
+   *  see loadLeadFacts. */
+  old_values: Record<string, unknown> | null;
+  new_values: Record<string, unknown> | null;
   /** THIS worker's ownership of THIS claim. Minted by
    *  claim_automation_events and required back by
    *  complete_automation_event and record_automation_run — a worker whose
@@ -82,8 +98,9 @@ function getWorkerToken(): string {
   const token = process.env.AUTOMATION_WORKER_TOKEN;
   if (!token || token.length < MIN_WORKER_TOKEN_LENGTH) {
     throw new WorkerNotConfiguredError(
-      "AUTOMATION_WORKER_TOKEN is not set. Read it once from the database with " +
-        "`select token from public.automation_worker_config;` and set it in the environment.",
+      "AUTOMATION_WORKER_TOKEN is not set. Mint one from a SQL console with " +
+        "`select public.rotate_automation_worker_token();` (it is shown once — only its hash " +
+        "is stored, so it cannot be read back afterwards) and set it in the environment.",
     );
   }
   return token;
@@ -173,6 +190,7 @@ async function processEvent(
     p_token: workerToken,
     p_customer_id: event.customer_id,
     p_trigger_type: event.event_type,
+    p_operation: event.operation,
   });
 
   if (automationError) {
@@ -189,19 +207,28 @@ async function processEvent(
     return;
   }
 
-  const facts = await loadLeadFacts(supabase, workerToken, event);
-  if (!facts) {
+  // WHICH OBJECT THIS EVENT IS ABOUT. Every automation get_active_automations
+  // just returned shares event.event_type by construction (that is the
+  // column the RPC filtered on), so this is decided ONCE per event, not
+  // once per matched automation.
+  const object = objectForEventType(event.event_type);
+  const loadedFacts =
+    object === "lead"
+      ? await loadLeadFacts(supabase, workerToken, event)
+      : loadTaskOrContactFacts(event, object);
+  if (!loadedFacts) {
     result.failed += 1;
     await release(
       supabase,
       workerToken,
       event,
       "failed",
-      "The lead this event refers to could not be read.",
+      "The record this event refers to could not be read.",
       false,
     );
     return;
   }
+  const { facts, previousFacts } = loadedFacts;
 
   // Lineage, read ONCE per event and then carried forward in memory. The
   // per-event action ceiling has to account for what this batch is about
@@ -265,7 +292,7 @@ async function processEvent(
       continue;
     }
 
-    const plan = planWorkflow(automation.definition, facts);
+    const plan = planWorkflow(automation.definition, facts, event.operation, previousFacts ?? undefined);
 
     if (!plan.triggered) {
       result.skipped += 1;
@@ -280,6 +307,12 @@ async function processEvent(
     let executed = 0;
     let runFailed = false;
     let runError: string | null = null;
+
+    // ONE map per automation's run against this event — see
+    // ActionContext's own note on why this cannot be shared across
+    // automations or carried between events. Get Records populates it;
+    // Loop reads it; nothing else in this file ever looks inside it.
+    const recordVariables = new Map<string, RecordVariableValue>();
 
     for (const action of plan.actions) {
       // Re-checked INSIDE the loop, not just before it: a workflow with
@@ -309,13 +342,30 @@ async function processEvent(
           supabase,
           workerToken,
           customerId: event.customer_id,
-          leadId: event.subject_id,
+          // facts.leadId, NOT event.subject_id: for a Lead-triggered
+          // event they are the same value, but for a Task/Contact-
+          // triggered event event.subject_id is the TASK/CONTACT's own
+          // id — facts.leadId is what loadTaskOrContactFacts resolves
+          // to the OWNING lead (tasks.lead_id/contacts.lead_id), which
+          // is what a Create Task/Create Contact action fired from
+          // such a workflow must attach the new record to.
+          leadId: facts.leadId,
           automationId: automation.automation_id,
           version: automation.version,
           eventId: event.id,
           nodeId: action.nodeId,
           facts,
           todayIso,
+          // See ActionContext's own note: an action whose write can
+          // cause a new event must be able to hand the database this
+          // event's own lineage, one generation deeper, so the new
+          // event is traceable back to this root instead of starting a
+          // fresh one the depth/ancestry safeguards cannot see.
+          rootEventId: event.root_event_id,
+          correlationId: event.correlation_id,
+          depth: event.depth,
+          recordVariables,
+          remainingActionBudget: Math.max(0, MAX_ACTIONS_PER_EVENT - actionsSoFar),
         },
         action.config,
       );
@@ -330,10 +380,18 @@ async function processEvent(
       // A suppressed duplicate is a success that did no work, so it does
       // not consume the per-event budget — otherwise a retry would eat
       // the allowance of actions that never actually happened.
+      //
+      // actionsPerformed, not a flat 1: an ordinary action performs
+      // exactly one thing (the field is omitted, and `?? 1` covers it),
+      // but a completed Loop reports however many of its own iterations
+      // actually ran, so the shared MAX_ACTIONS_PER_EVENT ceiling is
+      // charged for the real number of writes a single Loop "action"
+      // just made — see the Loop executor's own note in executors.ts.
       if (!outcome.deduplicated) {
-        executed += 1;
-        actionsSoFar += 1;
-        result.actionsExecuted += 1;
+        const performed = outcome.actionsPerformed ?? 1;
+        executed += performed;
+        actionsSoFar += performed;
+        result.actionsExecuted += performed;
       }
     }
 
@@ -368,11 +426,99 @@ async function processEvent(
   );
 }
 
+/** Projects a raw row snapshot down to exactly the allowlisted field
+ *  registry keys. A defensive second allowlist enforcement, on top of
+ *  evaluateFieldRule already failing closed on an unregistered key — the
+ *  snapshot itself may carry `leads` columns (whatsapp_phone, stage_id,
+ *  closed_at, ...) that are captured for future use but not yet exposed
+ *  as a condition, and this is what keeps `facts.fields` exactly
+ *  matching what the registry promises, not a leak of everything the
+ *  trigger happened to snapshot. */
+function buildFieldsMap(
+  snapshot: Record<string, unknown> | null,
+  registry: ReadonlyArray<FieldRegistryEntry> = LEAD_FIELD_REGISTRY,
+): Record<string, unknown> {
+  if (!snapshot) return {};
+  const out: Record<string, unknown> = {};
+  for (const field of registry) {
+    if (field.key in snapshot) out[field.key] = snapshot[field.key];
+  }
+  return out;
+}
+
+function objectForEventType(eventType: string): TriggerObject {
+  if (eventType.startsWith("task.")) return "task";
+  if (eventType.startsWith("contact.")) return "contact";
+  return "lead";
+}
+
+/**
+ * Facts for a Task- or Contact-triggered event, built ENTIRELY from the
+ * event's own snapshot — no RPC round trip, unlike loadLeadFacts.
+ *
+ * Lead has a live-read requirement (company/contactName always current
+ * for task-subject placeholders — see loadLeadFacts's own note); Task
+ * and Contact have no such requirement, since nothing in this app
+ * templates `{{task.*}}`/`{{contact.*}}` yet, so the snapshot IS the
+ * complete, correct answer for anything a condition or a downstream
+ * action reads.
+ *
+ * DELIBERATELY REUSES THE LeadFacts SHAPE rather than introducing a
+ * second Facts type: `fields` is the only part either object's
+ * conditions can read (TASK_FIELD_REGISTRY/CONTACT_FIELD_REGISTRY
+ * projected the same way buildFieldsMap already projects Lead's), and
+ * `leadId` becomes the OWNING lead (tasks.lead_id/contacts.lead_id,
+ * always present, never null) rather than the triggering row's own id —
+ * so a Create Task/Create Contact action fired from a Task- or
+ * Contact-triggered workflow still attaches to a real, correct lead
+ * exactly the way one fired from a Lead-triggered workflow does.
+ * company/contactName/source/hasOwner are placeholders — Task/Contact
+ * triggers do not yet expose a condition builder for their own fields
+ * (a stated v1 limitation, not silently missing; see
+ * docs/automations.md), so nothing reads these for a Task/Contact
+ * event today.
+ */
+function loadTaskOrContactFacts(
+  event: ClaimedEvent,
+  object: "task" | "contact",
+): { facts: LeadFacts; previousFacts: LeadFacts | null } | null {
+  const snapshot = event.new_values;
+  if (!snapshot) return null;
+
+  const registry = object === "task" ? TASK_FIELD_REGISTRY : CONTACT_FIELD_REGISTRY;
+  const leadId = snapshot.lead_id;
+  if (typeof leadId !== "string") return null;
+
+  const facts: LeadFacts = {
+    leadId,
+    source: null,
+    hasOwner: false,
+    company: "",
+    contactName: "",
+    fields: buildFieldsMap(snapshot, registry),
+  };
+
+  let previousFacts: LeadFacts | null = null;
+  if (event.operation === "updated" && event.old_values) {
+    const prevLeadId = event.old_values.lead_id;
+    previousFacts = {
+      leadId: typeof prevLeadId === "string" ? prevLeadId : leadId,
+      source: null,
+      hasOwner: false,
+      company: "",
+      contactName: "",
+      fields: buildFieldsMap(event.old_values, registry),
+    };
+  }
+
+  return { facts, previousFacts };
+}
+
 async function loadLeadFacts(
   supabase: ReturnType<typeof createWebhookClient>,
   workerToken: string,
   event: ClaimedEvent,
-): Promise<LeadFacts | null> {
+): Promise<{ facts: LeadFacts; previousFacts: LeadFacts | null } | null> {
   const { data, error } = await supabase.rpc("get_automation_lead_facts", {
     p_token: workerToken,
     p_customer_id: event.customer_id,
@@ -387,19 +533,44 @@ async function loadLeadFacts(
     return null;
   }
 
-  return {
+  const newSnapshot = event.new_values;
+
+  // THE SNAPSHOT WINS for anything a condition reads. The event captured
+  // what was true AT THE MOMENT of this specific create/update; an
+  // admin's "only IndiaMART leads" rule has to mean the lead ARRIVED
+  // from IndiaMART, not that its source column still says so by the time
+  // a worker reached it — and the same reasoning now extends to every
+  // dynamic field, not just source/owner. The display fields (company,
+  // contactName, used only for task-subject placeholders) still come
+  // from the LIVE row, because a task should name the company as it is
+  // now, not as it was when the trigger fired.
+  const facts: LeadFacts = {
     leadId: event.subject_id,
-    // THE SNAPSHOT WINS for the trigger-relevant fields. The event
-    // payload recorded what was true when the lead was created; an
-    // admin's "only IndiaMART leads" rule has to mean the lead ARRIVED
-    // from IndiaMART, not that its source column still says so by the
-    // time a worker reached it. The display fields below come from the
-    // live row, because a task should name the company as it is now.
-    source: typeof event.payload.source === "string" ? event.payload.source : row.source,
-    hasOwner: typeof event.payload.owner_id === "string" ? true : row.has_owner,
+    source: typeof newSnapshot?.source === "string" ? newSnapshot.source : row.source,
+    hasOwner: newSnapshot ? newSnapshot.owner_id != null : row.has_owner,
     company: row.company,
     contactName: row.contact_name,
+    fields: buildFieldsMap(newSnapshot),
   };
+
+  // Only built for an update with a real prior state — "entered" mode is
+  // the only consumer, and it only applies to updates (see
+  // matchesEventType's own doc comment on why a created event never
+  // checks it).
+  let previousFacts: LeadFacts | null = null;
+  if (event.operation === "updated" && event.old_values) {
+    const oldSnapshot = event.old_values;
+    previousFacts = {
+      leadId: event.subject_id,
+      source: typeof oldSnapshot.source === "string" ? oldSnapshot.source : null,
+      hasOwner: oldSnapshot.owner_id != null,
+      company: typeof oldSnapshot.company === "string" ? oldSnapshot.company : row.company,
+      contactName: typeof oldSnapshot.contact_name === "string" ? oldSnapshot.contact_name : row.contact_name,
+      fields: buildFieldsMap(oldSnapshot),
+    };
+  }
+
+  return { facts, previousFacts };
 }
 
 async function recordRun(

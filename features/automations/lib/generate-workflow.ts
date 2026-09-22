@@ -14,7 +14,8 @@ import {
   MAX_ROUND_ROBIN_POOL,
   MAX_SUBJECT_LENGTH,
 } from "../config/safeguards";
-import { REGISTRY_ENTRIES, SUBJECT_TOKENS, getRegistryEntry } from "../registry/definitions";
+import { ACTION_LEAD_UPDATE, CONDITION_FIELD_GROUP, REGISTRY_ENTRIES, SUBJECT_TOKENS, getRegistryEntry } from "../registry/definitions";
+import { LEAD_FIELD_REGISTRY, OPERATORS_BY_TYPE } from "../registry/fields";
 import { validateWorkflow } from "./validate-workflow";
 import type { AiGenerationResult, WorkflowDefinition, WorkflowEdge, WorkflowNode } from "@/types/automation";
 
@@ -152,9 +153,25 @@ ${roster}
 PLACEHOLDERS. In a task subject or description you may use only these:
 ${SUBJECT_TOKENS.map((token) => `  ${token.token} — ${token.description}`).join("\n")}
 
-ASSIGNMENT. For "${"task.create"}" set assignmentMode to "Fixed" with
-assigneeRef set to one reference, or "RoundRobin" with rotationRefs set
-to a list of references (at most ${MAX_ROUND_ROBIN_POOL}).
+FIELD CONDITIONS. For "${CONDITION_FIELD_GROUP}", config is
+{"root": <group>} where a <group> is
+{"kind":"group","match":"all"|"any","rules":[<rule-or-group>, ...]}
+and a rule is
+{"kind":"rule","field":"<field key>","operator":"<operator>","value":<value>,"valueTo":null}
+("valueTo" only for the "between" operator; otherwise always null).
+Only these field keys exist, each with only its own listed operators —
+never invent a field key or use an operator not listed for it:
+${LEAD_FIELD_REGISTRY.map((field) => `  ${field.key} (${field.type}): ${OPERATORS_BY_TYPE[field.type].join(", ")}`).join("\n")}
+Example: deal value over 50000 AND source is IndiaMART —
+{"root":{"kind":"group","match":"all","rules":[
+{"kind":"rule","field":"deal_value","operator":"greater_than","value":50000,"valueTo":null},
+{"kind":"rule","field":"source","operator":"equals","value":"IndiaMART","valueTo":null}]}}
+
+ASSIGNMENT. For any action with an assignmentMode field, set it to
+"Fixed" with assigneeRef set to one reference, or "RoundRobin" with
+rotationRefs set to a list of references (at most
+${MAX_ROUND_ROBIN_POOL}). For "${ACTION_LEAD_UPDATE}" specifically,
+assignmentMode may also be "None" to leave the lead's owner unchanged.
 
 LIMITS. At most ${MAX_NODES_PER_WORKFLOW} nodes. At most
 ${MAX_ACTIONS_PER_EVENT} actions. dueInDays between 0 and

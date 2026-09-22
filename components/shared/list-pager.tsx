@@ -12,6 +12,13 @@ type ListPagerProps = {
   /** Singular noun for the count, e.g. "automation". Pluralised with a
    *  trailing "s", which is all the nouns this app pages over need. */
   itemLabel: string;
+  /** The URL query parameter this pager reads and writes. Defaults to
+   *  "page" — every existing caller keeps that unchanged. Overridden
+   *  when a single page hosts more than one paginated list (the
+   *  automations page's own list already owns "page"; its Execution
+   *  History section uses "runsPage" instead, so paging one never
+   *  resets the other). */
+  paramName?: string;
 };
 
 /**
@@ -35,15 +42,15 @@ type ListPagerProps = {
  * buttons with real `disabled` attributes, same placement, same "Page x
  * of y" summary.
  */
-export function ListPager({ page, pageCount, totalCount, basePath, itemLabel }: ListPagerProps) {
+export function ListPager({ page, pageCount, totalCount, basePath, itemLabel, paramName = "page" }: ListPagerProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
 
   function goTo(nextPage: number) {
     const params = new URLSearchParams(searchParams.toString());
     // Page 1 is the default, so it is left out of the URL entirely.
-    if (nextPage <= 1) params.delete("page");
-    else params.set("page", String(nextPage));
+    if (nextPage <= 1) params.delete(paramName);
+    else params.set(paramName, String(nextPage));
 
     const query = params.toString();
     // scroll: false — paging should replace the list in place rather

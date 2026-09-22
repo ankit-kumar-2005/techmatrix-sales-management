@@ -101,7 +101,7 @@ export const MAX_ROUND_ROBIN_POOL = 25;
 /** Characters of plain-English description accepted by the AI builder. */
 export const MAX_AI_PROMPT_LENGTH = 1000;
 
-/** Sources one trigger filter or source condition may name. */
+/** Sources one "Lead source is" condition may name. */
 export const MAX_TRIGGER_SOURCES = 50;
 
 /** Characters in an automation's name and description. */
@@ -141,6 +141,108 @@ export const MAX_AI_QUESTIONS = 5;
 /** Characters in the AI's own plain-English summary of what it built,
  *  and in its explanation of why it could not. */
 export const MAX_AI_SUMMARY_LENGTH = 600;
+
+/**
+ * How deeply a condition group may nest (a group inside a group inside
+ * a group...). Bounds both the builder UI's recursion and the server's
+ * validation walk — an unbounded tree is a stack-depth risk in both.
+ */
+export const MAX_CONDITION_GROUP_DEPTH = 3;
+
+/** Rules or nested groups directly inside one condition group. Bounds
+ *  how wide a single AND/OR row can get before it should be restructured
+ *  into nested groups instead. */
+export const MAX_CONDITION_GROUP_RULES = 10;
+
+/** Characters in the Update Lead action's "next step" text. */
+export const MAX_NEXT_STEP_LENGTH = 200;
+
+/** Characters in a condition rule's own operator string (an internal
+ *  key like "greater_than_or_equal", never user-typed). */
+export const MAX_CONDITION_OPERATOR_LENGTH = 30;
+
+/** Characters in one condition rule's comparison value (or one entry of
+ *  an is_any_of list). */
+export const MAX_CONDITION_VALUE_LENGTH = 500;
+
+/** Values in one is_any_of list. */
+export const MAX_CONDITION_VALUE_LIST_LENGTH = 50;
+
+/** Characters in the Update Lead action's deal-value text input (kept as
+ *  text, not a number field — see the registry's own note on why —
+ *  so this bounds the string length, generous enough for any real
+ *  currency amount typed with no separators). */
+export const MAX_DEAL_VALUE_TEXT_LENGTH = 20;
+
+/** Named outcomes one Decision node may define, default path excluded —
+ *  more than this stops being a decision and starts being a table best
+ *  split across a couple of decisions. */
+export const MAX_DECISION_OUTCOMES = 8;
+
+/** Characters in one Decision outcome's name. */
+export const MAX_OUTCOME_NAME_LENGTH = 60;
+
+/** Characters in an edge's `branch` value. Generalised (see
+ *  types/automation.ts) from the original fixed "true"/"false" pair to
+ *  any string so a Decision's own outcome ids can be edge branches too —
+ *  this is what bounds that string now that it is no longer a two-value
+ *  enum. */
+export const MAX_BRANCH_ID_LENGTH = 60;
+
+/** Assignments one Assignment node may hold in its list. */
+export const MAX_ASSIGNMENTS_PER_NODE = 10;
+
+/**
+ * The hard cap on how many records ONE "Get Records" call can return —
+ * enforced twice, not once: as the SQL scan LIMIT in
+ * get_automation_records (so the query itself never reads more rows
+ * than this off disk) and again as the max value the config panel's
+ * own "How many" field accepts. Get Records reads the object's most
+ * RECENT rows up to this many, then filters them in memory using the
+ * SAME evaluateFieldGroup engine a Decision/Condition already uses — it
+ * does not scan the whole table looking for matches, so an older
+ * matching row beyond this window is a stated limitation (see the
+ * registry entry's own `limitations`), not a silent gap.
+ */
+export const MAX_RECORDS_PER_QUERY = 200;
+
+/**
+ * The hard cap on how many items one Loop node will iterate, regardless
+ * of how large the collection variable it was handed actually is.
+ *
+ * Composes with MAX_ACTIONS_PER_EVENT rather than duplicating it: this
+ * number bounds the LOOP's own ceiling; MAX_ACTIONS_PER_EVENT
+ * separately bounds the total actions across the whole event (this
+ * loop's iterations included), checked the identical way every other
+ * action already is. A loop cannot use one to bypass the other — see
+ * the Loop executor's own note in registry/executors.ts.
+ */
+export const MAX_LOOP_ITERATIONS = 50;
+
+/** Characters in a workflow variable's name. Kept short — a variable
+ *  name is an internal token substituted verbatim into `{{var.name}}`,
+
+*  not free text. */
+export const MAX_VARIABLE_NAME_LENGTH = 40;
+
+/** Characters in one Assignment's static value input. */
+export const MAX_VARIABLE_VALUE_LENGTH = 500;
+
+/** Characters in a Contact's name via Update/Create Contact — matches
+ *  the human-facing Create Contact form's own NAME_MAX_LENGTH. */
+export const MAX_CONTACT_NAME_LENGTH = 200;
+
+/** Characters in a Contact's company, title, email, or phone via
+ *  Update/Create Contact — the human-facing form leaves these
+ *  unbounded (a plain optional text input); an automation-facing one
+ *  does not get to, per this file's own rule that no free-text field
+ *  reachable from a workflow definition is ever unbounded. */
+export const MAX_CONTACT_TEXT_FIELD_LENGTH = 200;
+
+/** Characters in a node-reference field's target node id — the same
+ *  kind of bound as MAX_NODE_ID_LENGTH, reused for exactly the same
+ *  reason: an internal identifier string, not user-typed text. */
+export const MAX_NODE_REFERENCE_LENGTH = MAX_NODE_ID_LENGTH;
 
 /**
  * Minimum length of the automation worker token.

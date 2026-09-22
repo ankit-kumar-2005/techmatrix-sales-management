@@ -45,6 +45,8 @@ export async function seed() {
   await db.query(`
     truncate public.customer_automation_runs, public.automation_events,
              public.customer_automation_versions, public.customer_automations,
+             public.automation_action_executions,
+             public.contact_duplicate_dismissals, public.contacts,
              public.tasks, public.leads, public.customer_integration_participants,
              public.customer_integrations, public.customer_lead_stages,
              public.customer_users, public.customers cascade;

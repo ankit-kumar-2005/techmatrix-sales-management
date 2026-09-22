@@ -3,6 +3,7 @@ import {
   MAX_AI_PROMPT_LENGTH,
   MAX_AUTOMATION_DESCRIPTION_LENGTH,
   MAX_AUTOMATION_NAME_LENGTH,
+  MAX_BRANCH_ID_LENGTH,
   MAX_CANVAS_COORDINATE,
   MAX_EDGES_PER_WORKFLOW,
   MAX_NODES_PER_WORKFLOW,
@@ -24,7 +25,7 @@ import {
 
 export const workflowNodeSchema = z.object({
   id: z.string().trim().min(1).max(MAX_NODE_ID_LENGTH),
-  kind: z.enum(["trigger", "condition", "action"]),
+  kind: z.enum(["trigger", "condition", "decision", "assignment", "action"]),
   type: z.string().trim().min(1).max(MAX_NODE_ID_LENGTH),
   position: z.object({
     // Finite AND bounded — see MAX_CANVAS_COORDINATE for why both.
@@ -39,7 +40,12 @@ export const workflowEdgeSchema = z.object({
   id: z.string().trim().min(1).max(MAX_NODE_ID_LENGTH),
   source: z.string().trim().min(1).max(MAX_NODE_ID_LENGTH),
   target: z.string().trim().min(1).max(MAX_NODE_ID_LENGTH),
-  branch: z.enum(["true", "false"]).optional(),
+  // A free string, not a fixed enum — see WorkflowEdge's own note. Which
+  // values are actually VALID for a given source node (exactly
+  // "true"/"false" for a condition, one of that decision's own outcome
+  // ids or "default" for a decision) is a structural fact about THAT
+  // node's config, so it is checked in validateWorkflow, not here.
+  branch: z.string().trim().min(1).max(MAX_BRANCH_ID_LENGTH).optional(),
 });
 
 export const workflowDefinitionSchema = z.object({
