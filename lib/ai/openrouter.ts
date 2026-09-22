@@ -1,4 +1,5 @@
 import type { z } from "zod";
+import { BRAND_NAME } from "@/lib/brand";
 
 /**
  * SHARED OpenRouter transport — the parts of talking to OpenRouter that
@@ -215,7 +216,7 @@ async function attemptOnce<T>(
       headers: {
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
-        "X-Title": "Techmatrix Sales Management",
+        "X-Title": BRAND_NAME,
       },
       body: JSON.stringify({
         model,

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { ChevronLeftIcon, ChevronRightIcon } from "@/features/sales-management/components/icons";
+import { BRAND_NAME } from "@/lib/brand";
 
 type Testimonial = {
   quote: string;
@@ -26,7 +27,7 @@ const AVATAR_ACCENTS = {
 const TESTIMONIALS: Testimonial[] = [
   {
     quote:
-      "Techmatrix gave our team one clear view of the pipeline instead of five different spreadsheets. Follow-ups don't fall through the cracks anymore.",
+      `${BRAND_NAME} gave our team one clear view of the pipeline instead of five different spreadsheets. Follow-ups don't fall through the cracks anymore.`,
     name: "Alex Morgan",
     role: "Sales Director",
     company: "Nimbus & Co",

@@ -10,6 +10,8 @@ import { getVisibleTeamDirectory } from "@/features/leads/lib/get-team-directory
 import { getLeadCaptureOverview } from "@/features/integrations/lib/get-lead-capture-overview";
 import { getSourceMetadata } from "@/features/integrations/lib/providers/source-metadata";
 import { SourceCard } from "@/features/integrations/components/source-card";
+import { ComingSoonSourceCard } from "@/features/integrations/components/coming-soon-source-card";
+import { COMING_SOON_SOURCES } from "@/features/integrations/lib/providers/coming-soon-sources";
 import { ConnectIndiamartButton } from "@/features/integrations/components/connect-indiamart-button";
 import { WebhookUrlPanel } from "@/features/integrations/components/webhook-url-panel";
 import { CaptureSettingsForm } from "@/features/integrations/components/capture-settings-form";
@@ -103,8 +105,11 @@ export default async function LeadCapturePage() {
   // pasted into a third party's dashboard, so it has to be the stable
   // public origin. lib/app-url.ts carries the full reasoning (it is the
   // same resolution the invitation emails use, and the same
-  // misconfiguration risk).
-  //
+  // misconfiguration risk). Also handed to ComingSoonSourcesSection
+  // below, purely so its illustrative preview URL's origin looks like a
+  // real one — the only part of that preview that genuinely will be.
+  const appOrigin = getAppUrl();
+
   // The :source segment is integration.source ITSELF — the exact string
   // stored on the row, e.g. "IndiaMART" — not a separate URL slug. Every
   // layer (this URL, the webhook route's registry lookup, the source
@@ -113,7 +118,7 @@ export default async function LeadCapturePage() {
   // of sync. This is copy-only — an admin never hand-types it — so the
   // mixed-case segment costs nothing in practice.
   const webhookUrl = integration
-    ? `${getAppUrl()}/api/webhooks/leads/${integration.source}/${integration.webhook_token}`
+    ? `${appOrigin}/api/webhooks/leads/${integration.source}/${integration.webhook_token}`
     : null;
 
   return (
@@ -134,6 +139,13 @@ export default async function LeadCapturePage() {
             lastReceivedAt={overview.lastReceivedAt}
             nowMs={nowMs}
           />
+          {/* Three display-only "Soon" cards — JustDial, Website, Meta.
+              No real source, adapter, or token exists for any of them;
+              see coming-soon-sources.ts's own header for why this is
+              deliberately kept out of the real IntegrationSource type. */}
+          {COMING_SOON_SOURCES.map((source) => (
+            <ComingSoonSourceCard key={source.displayName} source={source} />
+          ))}
         </div>
       </section>
 

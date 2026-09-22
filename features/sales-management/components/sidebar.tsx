@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, type ComponentType, type SVGProps } from "react";
+import { BRAND_MARK_HEIGHT, BRAND_MARK_SRC, BRAND_MARK_WIDTH, BRAND_NAME } from "@/lib/brand";
 import {
   AutomationsIcon,
   BuildingIcon,
@@ -128,34 +129,24 @@ export function Sidebar({
           }`}
         >
           {/* Same asset the home page's shared Logo component uses
-              (components/shared/logo.tsx) — techmatrix-mark.png, the
-              cloud icon cropped down from the full wordmark, rather than
-              this sidebar's own separate wordmark image. Still an opaque
-              RGB PNG (no alpha channel, no image-editing tool available
-              in this environment to add one), so it keeps the same
-              intentional rounded white badge treatment — the crop is
-              much tighter around the mark than the full wordmark was,
-              so only its four corners are white now, not a whole
-              rectangle. Not swapped in as the shared <Logo> component
-              itself: that component hardcodes light-theme text colors
-              (neutral-900/sky-600), which would be unreadable against
-              this sidebar's dark gradient — the dark-theme text labels
-              here stay hand-rolled. */}
+              (components/shared/logo.tsx), read from lib/brand.ts —
+              never a second hardcoded copy of the name or the path.
+              Not swapped in as the shared <Logo> component itself:
+              that component hardcodes light-theme text colors, which
+              would be unreadable against this sidebar's dark gradient —
+              the dark-theme text label here stays hand-rolled. */}
           <div className="flex shrink-0 items-center justify-center rounded-xl bg-white p-2 shadow-lg shadow-black/20 ring-1 ring-white/20">
             <Image
-              src="/techmatrix-mark.png"
-              alt="Techmatrix"
-              width={122}
-              height={72}
+              src={BRAND_MARK_SRC}
+              alt={BRAND_NAME}
+              width={BRAND_MARK_WIDTH}
+              height={BRAND_MARK_HEIGHT}
               className="h-7 w-auto"
             />
           </div>
           {!collapsed ? (
             <div className="min-w-0 flex-1 leading-tight">
-              <p className="truncate text-sm font-bold text-white">Techmatrix</p>
-              <p className="truncate text-[10px] font-semibold uppercase tracking-wide text-sky-400">
-                Sales Management
-              </p>
+              <p className="truncate text-sm font-bold text-white">{BRAND_NAME}</p>
             </div>
           ) : null}
           {onToggleCollapse ? (

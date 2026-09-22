@@ -2,6 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { NewsletterForm } from "./newsletter-form";
 import { FacebookIcon, LinkedInIcon, TwitterIcon } from "@/features/sales-management/components/icons";
+import { BRAND_MARK_HEIGHT, BRAND_MARK_SRC, BRAND_MARK_WIDTH, BRAND_NAME } from "@/lib/brand";
 
 const CONTACT_EMAIL = "techmatrixsalesmanagment@gmail.com";
 
@@ -47,19 +48,14 @@ export function SiteFooter() {
             <Link href="/" className="flex items-center gap-2.5">
               <div className="rounded-lg bg-white/95 p-2">
                 <Image
-                  src="/techmatrix-mark.png"
-                  alt="Techmatrix"
-                  width={122}
-                  height={72}
+                  src={BRAND_MARK_SRC}
+                  alt={BRAND_NAME}
+                  width={BRAND_MARK_WIDTH}
+                  height={BRAND_MARK_HEIGHT}
                   className="h-9 w-auto sm:h-10"
                 />
               </div>
-              <span className="flex flex-col leading-none">
-                <span className="text-base font-bold text-white">Techmatrix</span>
-                <span className="mt-0.5 text-[10px] font-semibold uppercase tracking-wider text-teal-300">
-                  Sales Management
-                </span>
-              </span>
+              <span className="text-base font-bold text-white">{BRAND_NAME}</span>
             </Link>
             <p className="mt-4 max-w-xs text-sm text-slate-300">
               The all-in-one platform for modern sales teams.
@@ -129,7 +125,7 @@ export function SiteFooter() {
       <div className="border-t border-white/10">
         <div className="mx-auto flex max-w-6xl flex-col gap-3 px-4 py-6 sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
           <p className="text-xs text-slate-400">
-            © {new Date().getFullYear()} Techmatrix Sales Management. All rights reserved.
+            © {new Date().getFullYear()} {BRAND_NAME}. All rights reserved.
           </p>
           <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
             {LEGAL_LINKS.map((link) => (

@@ -1,5 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
+import { BRAND_NAME } from "@/lib/brand";
 import { SiteHeader } from "@/features/marketing/components/site-header";
 import { SiteFooter } from "@/features/marketing/components/site-footer";
 import { ScrollFadeIn } from "@/features/marketing/components/scroll-fade-in";
@@ -73,7 +74,7 @@ export default function AboutPage() {
               About Us
             </span>
             <h1 className="mt-5 text-4xl font-bold tracking-tight text-neutral-900 sm:text-5xl">
-              About Techmatrix Sales Management
+              About {BRAND_NAME}
             </h1>
             <p className="mt-4 text-lg leading-relaxed text-neutral-600">
               A focused, modern sales management platform built to help teams run their
@@ -90,7 +91,7 @@ export default function AboutPage() {
                 <h2 className="text-3xl font-bold tracking-tight text-neutral-900">Our Story</h2>
                 <p className="mt-4 text-base leading-relaxed text-neutral-600">
                   We believe sales teams do their best work when they aren&apos;t fighting their
-                  own tools. Techmatrix Sales Management exists to give teams a single, reliable
+                  own tools. {BRAND_NAME} exists to give teams a single, reliable
                   place to manage leads, track deals, and understand how their pipeline is
                   performing — without the overhead of a bloated, generic CRM.
                 </p>

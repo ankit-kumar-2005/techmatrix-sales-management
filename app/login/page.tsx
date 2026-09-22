@@ -3,6 +3,7 @@ import { MobileNavDrawer } from "@/components/shared/mobile-nav-drawer";
 import { LoginForm } from "@/features/auth/components/login-form";
 import { MessageBanner } from "@/components/shared/message-banner";
 import { SiteFooter } from "@/features/marketing/components/site-footer";
+import { BRAND_NAME } from "@/lib/brand";
 
 const SUCCESS_MESSAGES: Record<string, string> = {
   password_created: "Your password has been created successfully. Please log in to continue.",
@@ -22,7 +23,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
       <MobileNavDrawer />
       <AuthShell
         title="Welcome back"
-        description="Log in to your Techmatrix Sales Management account."
+        description={`Log in to your ${BRAND_NAME} account.`}
         hideLogo
       >
         {successText ? <MessageBanner tone="success">{successText}</MessageBanner> : null}

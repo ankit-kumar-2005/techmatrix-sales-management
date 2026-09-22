@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { BRAND_NAME } from "@/lib/brand";
 import { SiteHeader } from "@/features/marketing/components/site-header";
 import { SiteFooter } from "@/features/marketing/components/site-footer";
 import { ScrollFadeIn } from "@/features/marketing/components/scroll-fade-in";
@@ -143,7 +144,7 @@ export default function HomePage() {
                   <span className="h-2.5 w-2.5 rounded-full bg-red-300" />
                   <span className="h-2.5 w-2.5 rounded-full bg-amber-300" />
                   <span className="h-2.5 w-2.5 rounded-full bg-emerald-300" />
-                  <span className="ml-2 text-xs font-medium text-neutral-400">Techmatrix — Pipeline</span>
+                  <span className="ml-2 text-xs font-medium text-neutral-400">{BRAND_NAME} — Pipeline</span>
                 </div>
 
                 <div className="grid grid-cols-3 gap-2 p-3">

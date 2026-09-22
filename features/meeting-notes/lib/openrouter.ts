@@ -8,6 +8,7 @@ import {
   OPENROUTER_CHAT_COMPLETIONS_URL,
   type ChatCompletionResponse,
 } from "@/lib/ai/openrouter";
+import { BRAND_NAME } from "@/lib/brand";
 
 /**
  * SERVER-ONLY. The single place this application talks to OpenRouter.
@@ -359,7 +360,7 @@ async function attempt(
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
         // Static product name. No key, no user data, no tenant id.
-        "X-Title": "Techmatrix Sales Management",
+        "X-Title": BRAND_NAME,
       },
       body: JSON.stringify({
         model,

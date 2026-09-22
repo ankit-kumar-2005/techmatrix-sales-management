@@ -4,7 +4,12 @@ import { SiteFooter } from "@/features/marketing/components/site-footer";
 import { ScrollFadeIn } from "@/features/marketing/components/scroll-fade-in";
 import { ContactForm } from "@/features/marketing/components/contact-form";
 import { ClockIcon, LocationIcon, MailIcon, PhoneIcon } from "@/features/sales-management/components/icons";
+import { BRAND_NAME } from "@/lib/brand";
 
+// NOT RENAMED: a real, external mailbox tied to the old brand — see
+// this rebrand's own report for why changing it needs a human
+// decision (a working inbox vs. a page that just looks right), not a
+// silent find-replace.
 const CONTACT_EMAIL = "techmatrixsalesmanagment@gmail.com";
 
 const CONTACT_INFO = [
@@ -66,7 +71,7 @@ export default function ContactPage() {
               Let&apos;s Talk
             </h1>
             <p className="mt-4 text-lg leading-relaxed text-neutral-600">
-              Have a question about Techmatrix Sales Management? We&apos;re happy to help — reach
+              Have a question about {BRAND_NAME}? We&apos;re happy to help — reach
               out any time and we&apos;ll get back to you.
             </p>
           </div>
@@ -125,7 +130,7 @@ export default function ContactPage() {
                 Prefer a live demo instead?
               </h2>
               <p className="max-w-md text-base text-neutral-600">
-                Talk to our team and see Techmatrix Sales Management in action.
+                Talk to our team and see {BRAND_NAME} in action.
               </p>
               <Link
                 href="#contact-form"

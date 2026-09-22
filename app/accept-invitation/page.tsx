@@ -7,6 +7,7 @@ import { InvitationLinkHandler } from "@/features/invitations/components/invitat
 import { getInvitationContext } from "@/features/invitations/lib/get-invitation-context";
 import { getPendingInvitationIdForCurrentUser } from "@/features/invitations/lib/get-pending-invitation";
 import { getCurrentMembership } from "@/features/customers/lib/get-current-membership";
+import { BRAND_NAME } from "@/lib/brand";
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -112,7 +113,7 @@ export default async function AcceptInvitationPage({ searchParams }: AcceptInvit
           : isBlocked
             ? "This invitation can no longer be used."
             : context?.companyName
-              ? `You have been invited to join ${context.companyName} on Techmatrix Sales Management. Set a password to finish setting up your account.`
+              ? `You have been invited to join ${context.companyName} on ${BRAND_NAME}. Set a password to finish setting up your account.`
               : "Set a password to finish setting up your account."
       }
     >

@@ -3,6 +3,7 @@
 import { Suspense, useEffect, useState, type ReactNode } from "react";
 import { Sidebar } from "./sidebar";
 import { NavigationProgress } from "@/components/shared/navigation-progress";
+import { BRAND_NAME } from "@/lib/brand";
 import { CloseIcon, MenuIcon } from "./icons";
 
 type AppShellProps = {
@@ -131,7 +132,7 @@ export function AppShell({ customerName, userEmail, userAvatarUrl, children }: A
           >
             <MenuIcon className="h-5 w-5" />
           </button>
-          <span className="text-sm font-semibold text-neutral-900">Techmatrix Sales Management</span>
+          <span className="text-sm font-semibold text-neutral-900">{BRAND_NAME}</span>
         </header>
 
         <main className="min-w-0 flex-1 px-4 py-6 sm:px-6 lg:px-10 lg:py-8">{children}</main>
