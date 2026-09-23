@@ -152,19 +152,23 @@ export default async function LeadCapturePage() {
 
       <section className="flex flex-col gap-3">
         <h2 className="text-xs font-bold tracking-wide text-neutral-500 uppercase">Connected sources</h2>
-        {/* A SINGLE STACKED COLUMN, not a multi-column grid — each card
-            now expands IN PLACE to show its own real connection details
-            (masked URL, Copy, Test, Setup guide, Regenerate) directly
-            inside itself. In a 3-across grid, one card growing taller
-            than its row-mates either stretches the whole row to match
-            it (an awkward gap under the shorter cards) or, if made to
-            span every column instead, forces its siblings down into a
-            new row — repositioning them, which is exactly what this
-            page must not do. A single column sidesteps the problem
-            entirely: there are no row-mates to misalign with, and an
-            expanding card only ever pushes whatever is already below it
-            further down — normal document flow, not a layout bug. */}
-        <div className="flex flex-col gap-4">
+        {/* A 2-UP GRID — horizontal rather than one long stacked column,
+            while keeping each card wide enough that its connection panel
+            (masked URL, Copy, Test, Setup guide, Regenerate) stays just
+            as readable as it was at full width; a 4-across grid made
+            that panel uncomfortably cramped. Each card still expands IN
+            PLACE inside its own boundary. `items-start` is the reason
+            this doesn't break when one card is taller than its
+            row-mate: without it, CSS Grid's default is to STRETCH every
+            cell in a row to match the tallest one, which would inflate
+            the shorter card's own box into a tall, mostly-empty shell.
+            With items-start, each card keeps its own natural height — a
+            shorter neighbor just leaves quiet space beside it, never a
+            stretched or misshapen card — and nothing ever changes
+            position: a taller card only pushes the *next grid row* down,
+            exactly like a paragraph pushing the next one down the
+            page. */}
+        <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2">
           <SourceCard
             name={metadata.displayName}
             description={metadata.description}

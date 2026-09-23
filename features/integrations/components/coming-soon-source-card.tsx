@@ -74,13 +74,20 @@ export function ComingSoonSourceCard({ source, integrationId, webhookUrl }: Comi
             {source.useGlobeIcon ? <GlobeIcon className="h-5 w-5" /> : source.initials}
           </span>
           <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-base font-semibold text-neutral-900">{source.displayName}</span>
-              <span className="inline-flex shrink-0 items-center rounded-full bg-neutral-100 px-2.5 py-0.5 text-[10px] font-bold tracking-wide text-neutral-500 uppercase ring-1 ring-inset ring-neutral-200">
-                Soon
-              </span>
-            </div>
-            <p className="mt-1 text-sm leading-relaxed text-neutral-500">{source.description}</p>
+            {/* Name and "Soon" pill each get their own line — same
+                reasoning as SourceCard's own header: a shared row wraps
+                at a different point per card depending on name length,
+                producing uneven collapsed heights in a narrow grid
+                column. Stacked, every card gets the identical anatomy:
+                name line, pill line, then up to 2 lines of description. */}
+            <span className="block truncate text-base font-semibold text-neutral-900">{source.displayName}</span>
+            <span className="mt-1 inline-flex w-fit shrink-0 items-center rounded-full bg-neutral-100 px-2.5 py-0.5 text-[10px] font-bold tracking-wide text-neutral-500 uppercase ring-1 ring-inset ring-neutral-200">
+              Soon
+            </span>
+            {/* Clamped to 2 lines — same reasoning as SourceCard's own
+                description: keeps every card's collapsed height close
+                in a 4-across grid, regardless of wording length. */}
+            <p className="mt-1.5 line-clamp-2 text-sm leading-relaxed text-neutral-500">{source.description}</p>
           </div>
           <span className="sr-only">
             {expanded ? `Collapse ${source.displayName} connection details` : `Show ${source.displayName} connection details`}

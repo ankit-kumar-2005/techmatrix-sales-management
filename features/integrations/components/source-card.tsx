@@ -109,21 +109,32 @@ export function SourceCard({
             {mark}
           </span>
           <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <h3 className="text-base font-semibold text-neutral-900">{name}</h3>
+            {/* Name and status pill each get their OWN line, rather than
+                sharing one row that wraps unpredictably — in a narrow
+                grid column, "IndiaMART" + "CONNECTED" is too wide for
+                one line, and letting them compete for space either
+                truncates the name (illegible) or wraps at a different
+                point per card (uneven height). Stacked, every card gets
+                the same fixed anatomy: name line, pill line, then up to
+                2 lines of description. */}
+            <h3 className="truncate text-base font-semibold text-neutral-900">{name}</h3>
+            <span
+              className={`mt-1 inline-flex w-fit shrink-0 items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px] font-bold tracking-wide uppercase ring-1 ring-inset ${statusClass}`}
+            >
               <span
-                className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px] font-bold tracking-wide uppercase ring-1 ring-inset ${statusClass}`}
-              >
-                <span
-                  className={`h-1.5 w-1.5 shrink-0 rounded-full ${dotClass} ${
-                    isLive ? "animate-[pulse_2.5s_ease-in-out_infinite] motion-reduce:animate-none" : ""
-                  }`}
-                  aria-hidden="true"
-                />
-                {statusLabel}
-              </span>
-            </div>
-            <p className="mt-1 text-sm leading-relaxed text-neutral-500">{description}</p>
+                className={`h-1.5 w-1.5 shrink-0 rounded-full ${dotClass} ${
+                  isLive ? "animate-[pulse_2.5s_ease-in-out_infinite] motion-reduce:animate-none" : ""
+                }`}
+                aria-hidden="true"
+              />
+              {statusLabel}
+            </span>
+            {/* Clamped to 2 lines — in a 4-across grid each card is
+                narrow enough that description length alone would
+                otherwise make cards of noticeably different heights;
+                a shared cap keeps every card's collapsed height close
+                regardless of exact wording length. */}
+            <p className="mt-1.5 line-clamp-2 text-sm leading-relaxed text-neutral-500">{description}</p>
           </div>
           <span className="sr-only">{expanded ? `Collapse ${name} connection details` : `Show ${name} connection details`}</span>
           <ChevronDownIcon
