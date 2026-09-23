@@ -21,6 +21,7 @@ import { FieldReferencePicker } from "./field-reference-picker";
 import { DecisionOutcomesEditor } from "./decision-outcomes-editor";
 import { EntryConditionEditor } from "./entry-condition-editor";
 import { LearningPanel } from "./learning-panel";
+import { ChevronRightIcon } from "@/features/sales-management/components/icons";
 import type { ConditionGroup } from "../registry/condition-group";
 import type { TeamDirectoryEntry } from "@/types/lead";
 import type { ValidationIssue } from "@/types/automation";
@@ -39,6 +40,12 @@ type NodeConfigPanelProps = {
   readOnly: boolean;
   onChange: (nodeId: string, config: Record<string, unknown>) => void;
   onDelete: (nodeId: string) => void;
+  /** Renders a collapse toggle in the tab bar's own corner when set —
+   *  purely a layout affordance for the builder's progressive panel
+   *  collapse, so it lives beside the Configure/Learn tabs rather than
+   *  as a second floating button that would overlap them (TabBar's own
+   *  two tabs are flex-1 and already fill the row's full width). */
+  onCollapse?: () => void;
 };
 
 /**
@@ -55,7 +62,7 @@ type NodeConfigPanelProps = {
  * validated by the same Zod schema, and is read by the executor —
  * without this file changing at all.
  */
-export function NodeConfigPanel({ node, allNodes, team, issues, readOnly, onChange, onDelete }: NodeConfigPanelProps) {
+export function NodeConfigPanel({ node, allNodes, team, issues, readOnly, onChange, onDelete, onCollapse }: NodeConfigPanelProps) {
   // TABS, NOT TWO SEPARATE PANELS — a fixed set of tabs at the top of
   // this one panel, so selecting a different node never has to decide
   // which panel it "belongs in". Reset per-node selection change is
@@ -68,7 +75,7 @@ export function NodeConfigPanel({ node, allNodes, team, issues, readOnly, onChan
   if (!node) {
     return (
       <div className="flex h-full flex-col">
-        <TabBar tab={tab} onChange={setTab} />
+        <TabBar tab={tab} onChange={setTab} onCollapse={onCollapse} />
         {tab === "learn" ? (
           <LearningPanel entry={undefined} />
         ) : (
@@ -85,7 +92,7 @@ export function NodeConfigPanel({ node, allNodes, team, issues, readOnly, onChan
   if (isEndNode(node)) {
     return (
       <div className="flex h-full flex-col">
-        <TabBar tab={tab} onChange={setTab} />
+        <TabBar tab={tab} onChange={setTab} onCollapse={onCollapse} />
         {tab === "learn" ? (
           <div className="p-4">
             <p className="text-xs leading-relaxed text-neutral-500">
@@ -126,7 +133,7 @@ export function NodeConfigPanel({ node, allNodes, team, issues, readOnly, onChan
   if (!entry) {
     return (
       <div className="flex h-full flex-col">
-        <TabBar tab={tab} onChange={setTab} />
+        <TabBar tab={tab} onChange={setTab} onCollapse={onCollapse} />
         {tab === "learn" ? (
           <LearningPanel entry={undefined} />
         ) : (
@@ -161,7 +168,7 @@ export function NodeConfigPanel({ node, allNodes, team, issues, readOnly, onChan
   if (tab === "learn") {
     return (
       <div className="flex h-full flex-col">
-        <TabBar tab={tab} onChange={setTab} />
+        <TabBar tab={tab} onChange={setTab} onCollapse={onCollapse} />
         <LearningPanel entry={entry} />
       </div>
     );
@@ -169,7 +176,7 @@ export function NodeConfigPanel({ node, allNodes, team, issues, readOnly, onChan
 
   return (
     <div className="flex h-full flex-col overflow-y-auto">
-      <TabBar tab={tab} onChange={setTab} />
+      <TabBar tab={tab} onChange={setTab} onCollapse={onCollapse} />
 
       <div className="border-b border-neutral-100 p-4">
         <p className="text-[10px] font-bold tracking-wide text-neutral-400 uppercase">{entry.kind}</p>
@@ -560,9 +567,17 @@ function StartObjectPicker({ activeObject }: { activeObject: (typeof OBJECT_CHOI
   );
 }
 
-function TabBar({ tab, onChange }: { tab: "configure" | "learn"; onChange: (tab: "configure" | "learn") => void }) {
+function TabBar({
+  tab,
+  onChange,
+  onCollapse,
+}: {
+  tab: "configure" | "learn";
+  onChange: (tab: "configure" | "learn") => void;
+  onCollapse?: () => void;
+}) {
   return (
-    <div role="tablist" aria-label="Node panel" className="flex shrink-0 border-b border-neutral-100">
+    <div role="tablist" aria-label="Node panel" className="flex shrink-0 items-center border-b border-neutral-100">
       {(["configure", "learn"] as const).map((value) => (
         <button
           key={value}
@@ -579,6 +594,17 @@ function TabBar({ tab, onChange }: { tab: "configure" | "learn"; onChange: (tab:
           {value === "configure" ? "Configure" : "Learn"}
         </button>
       ))}
+      {onCollapse ? (
+        <button
+          type="button"
+          onClick={onCollapse}
+          aria-label="Hide configure panel"
+          title="Hide configure panel"
+          className="mr-1.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-700"
+        >
+          <ChevronRightIcon className="h-3.5 w-3.5" />
+        </button>
+      ) : null}
     </div>
   );
 }

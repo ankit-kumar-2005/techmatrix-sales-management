@@ -2,7 +2,7 @@
 
 import "@xyflow/react/dist/style.css";
 
-import { useCallback, useMemo, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   addEdge,
@@ -21,6 +21,7 @@ import {
 } from "@xyflow/react";
 import { FormField } from "@/components/shared/form-field";
 import { MessageBanner } from "@/components/shared/message-banner";
+import { ChevronLeftIcon, ChevronRightIcon, MaximizeIcon, MinimizeIcon } from "@/features/sales-management/components/icons";
 import { DECISION_DEFAULT_BRANCH, TRIGGER_LEAD_CREATED, getRegistryEntry, type DecisionOutcome } from "../registry/definitions";
 import { MAX_AUTOMATION_DESCRIPTION_LENGTH, MAX_AUTOMATION_NAME_LENGTH } from "../config/safeguards";
 import { validateWorkflow } from "../lib/validate-workflow";
@@ -71,6 +72,23 @@ type AutomationBuilderProps = {
  *  renders. */
 const NODE_TYPES = { automation: WorkflowNodeCard, [AUTOMATION_END_TYPE]: EndNodeCard };
 const EDGE_TYPES = { insertable: InsertableEdgeType };
+
+/** Per-viewer UI preference, not app data — same reasoning and the
+ *  same localStorage-backed pattern as AppShell's own
+ *  SIDEBAR_COLLAPSED_STORAGE_KEY. */
+const LEFT_COLLAPSED_KEY = "pipeway-automation-builder-left-collapsed";
+const RIGHT_COLLAPSED_KEY = "pipeway-automation-builder-right-collapsed";
+
+/** Four full, literal class strings — deliberately not one template
+ *  literal with an interpolated arbitrary value (see the call site's
+ *  own note on why Tailwind's static scanner needs each one written out
+ *  in full to generate its CSS at all). */
+function builderGridColsClass(leftCollapsed: boolean, rightCollapsed: boolean): string {
+  if (leftCollapsed && rightCollapsed) return "lg:grid-cols-[48px_minmax(0,1fr)_48px]";
+  if (leftCollapsed) return "lg:grid-cols-[48px_minmax(0,1fr)_300px]";
+  if (rightCollapsed) return "lg:grid-cols-[220px_minmax(0,1fr)_48px]";
+  return "lg:grid-cols-[220px_minmax(0,1fr)_300px]";
+}
 
 /** What is being inserted: appended after a specific node's specific
  *  output, or spliced into the middle of an existing edge. Both open
@@ -132,12 +150,15 @@ function BuilderInner({
   const [automationId, setAutomationId] = useState(initialAutomationId);
   const [name, setName] = useState(initialName);
   const [description, setDescription] = useState(initialDescription);
-  const [nodes, setNodes, onNodesChangeBase] = useNodesState<CanvasNode>(
-    initialDefinition ? toFlowNodes(initialDefinition) : [],
-  );
-  const [edges, setEdges, onEdgesChangeBase] = useEdgesState<Edge>(
-    initialDefinition ? toFlowEdges(initialDefinition) : [],
-  );
+  // See withEndMarkers' own note — this is the fix for the End marker
+  // vanishing after a save: it restores one wherever the loaded
+  // definition left an output with nothing downstream, the same thing
+  // startWithTrigger already does for a brand-new canvas.
+  const initialFlow = initialDefinition
+    ? withEndMarkers(toFlowNodes(initialDefinition), toFlowEdges(initialDefinition))
+    : { nodes: [] as CanvasNode[], edges: [] as Edge[] };
+  const [nodes, setNodes, onNodesChangeBase] = useNodesState<CanvasNode>(initialFlow.nodes);
+  const [edges, setEdges, onEdgesChangeBase] = useEdgesState<Edge>(initialFlow.edges);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   /** Which content the LEFT column shows — the "+" palette (default) or
    *  the Resources panel (Phase 2's record/collection variables,
@@ -156,6 +177,94 @@ function BuilderInner({
    * automation for exactly that reason.
    */
   const [locked, setLocked] = useState(status === "Active");
+
+  /**
+   * PROGRESSIVE PANEL COLLAPSE — pure client UI state, nothing persisted
+   * to the database. Each side panel collapses independently: both
+   * expanded (3 columns), either one collapsed (2), or both (1, canvas
+   * only). Read from localStorage after mount, same hydration-safe
+   * pattern AppShell's own sidebar-collapse preference already uses
+   * (first paint always assumes expanded, since localStorage does not
+   * exist during SSR, then syncs once mounted) — deliberately NOT a
+   * database column, per this pass's own instruction that a UI
+   * preference resetting on a fresh browser is an acceptable trade for
+   * not adding schema for it.
+   */
+  const [leftCollapsed, setLeftCollapsed] = useState(false);
+  const [rightCollapsed, setRightCollapsed] = useState(false);
+  useEffect(() => {
+    try {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- window/localStorage don't exist during SSR, so this one-time sync of a persisted UI preference on mount is the standard hydration-safe pattern here, not a perf concern for two booleans (same pattern AppShell's own sidebar-collapse preference uses)
+      setLeftCollapsed(window.localStorage.getItem(LEFT_COLLAPSED_KEY) === "true");
+      setRightCollapsed(window.localStorage.getItem(RIGHT_COLLAPSED_KEY) === "true");
+    } catch {
+      // Private-mode/disabled storage: expanded-by-default is a fine fallback.
+    }
+  }, []);
+  // 320ms: just past the grid's own 300ms column-width transition, so
+  // this re-centres on the canvas's FINAL size rather than the size it
+  // was mid-slide — a bare requestAnimationFrame here would catch only
+  // the first frame of that transition, still at the old width.
+  function refitAfterPanelTransition() {
+    window.setTimeout(() => fitView({ duration: 300, padding: 0.2 }), 320);
+  }
+  function toggleLeftCollapsed() {
+    setLeftCollapsed((current) => {
+      const next = !current;
+      try {
+        window.localStorage.setItem(LEFT_COLLAPSED_KEY, String(next));
+      } catch {
+        // Non-critical: the preference just won't survive a reload.
+      }
+      return next;
+    });
+    refitAfterPanelTransition();
+  }
+  function toggleRightCollapsed() {
+    setRightCollapsed((current) => {
+      const next = !current;
+      try {
+        window.localStorage.setItem(RIGHT_COLLAPSED_KEY, String(next));
+      } catch {
+        // Non-critical: the preference just won't survive a reload.
+      }
+      return next;
+    });
+    refitAfterPanelTransition();
+  }
+
+  /** Real browser fullscreen (the Fullscreen API on the canvas card
+   *  itself, not just the panel-collapse layout) — a second, larger
+   *  lever for the same "give me more room to work" goal, independent
+   *  of the two panel toggles above so either can be used alone or
+   *  together. Synced FROM the browser's own fullscreenchange event
+   *  (not just set on click) because Escape exits fullscreen without
+   *  going through this component at all — without that listener the
+   *  toggle button's own icon/label would silently go stale. */
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const canvasCardRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    function handleFullscreenChange() {
+      setIsFullscreen(document.fullscreenElement === canvasCardRef.current);
+      // The viewport just changed size dramatically (the whole screen,
+      // or back to the card's own bounds) — re-centre on it rather than
+      // leaving the graph wherever it happened to sit in the OLD
+      // viewport. requestAnimationFrame because fitView reads node
+      // dimensions from the DOM, which needs one paint after the
+      // fullscreen transition to reflect the new container size (the
+      // exact same reason autoLayout's own fitView call waits a frame).
+      requestAnimationFrame(() => fitView({ duration: 300, padding: 0.2 }));
+    }
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
+  }, [fitView]);
+  function toggleFullscreen() {
+    if (document.fullscreenElement) {
+      document.exitFullscreen();
+    } else {
+      canvasCardRef.current?.requestFullscreen();
+    }
+  }
 
   const definition = useMemo<WorkflowDefinition>(() => fromFlow(nodes, edges), [nodes, edges]);
 
@@ -571,25 +680,64 @@ function BuilderInner({
           all inside a parent with no resolved height — a flex/grid child
           with `min-h-0` and no fixed basis is exactly that case. The
           height is set here, once, rather than on the ReactFlow element
-          itself so the palette and config columns match it. */}
-      <div className="grid h-[600px] grid-cols-1 gap-4 lg:grid-cols-[220px_minmax(0,1fr)_300px]">
+          itself so the palette and config columns match it.
+
+          PROGRESSIVE COLLAPSE, 3 columns down to 1: each side column's
+          own width swaps between its normal size and a slim 48px rail
+          depending on leftCollapsed/rightCollapsed — the canvas column
+          (minmax(0,1fr)) absorbs whatever space either side gives up.
+          The template itself transitions (not just its children fading)
+          for a panel that visibly slides shut rather than blinking
+          away.
+
+          FOUR LITERAL CLASS STRINGS, not one interpolated template —
+          Tailwind's build-time scanner finds utility classes by
+          searching source text for complete class names; a runtime
+          `${leftCollapsed ? "48px" : "220px"}` inside an arbitrary-value
+          bracket is invisible to it; whichever combination the scanner
+          never saw as a whole literal string simply has no CSS
+          generated for it. builderGridColsClass (below) is the one
+          place all four full strings exist verbatim so every one of
+          them is actually in the shipped stylesheet. */}
+      <div className={`grid h-[600px] grid-cols-1 gap-4 transition-[grid-template-columns] duration-300 ease-in-out ${builderGridColsClass(leftCollapsed, rightCollapsed)}`}>
         <div className="hidden h-full flex-col overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-black/5 lg:flex">
-          <LeftColumnTabs tab={leftTab} onChange={setLeftTab} />
-          <div className="min-h-0 flex-1">
-            {leftTab === "palette" ? (
-              <NodePalette onAdd={addNode} hasTrigger={hasTrigger} disabled={locked} />
-            ) : (
-              <ResourcesPanel
-                nodes={nodes.filter((candidate): candidate is BuilderNode => !isEndNode(candidate))}
-                onSelectNode={setSelectedId}
-                onAdd={addNode}
-                disabled={locked}
-              />
-            )}
-          </div>
+          {leftCollapsed ? (
+            <button
+              type="button"
+              onClick={toggleLeftCollapsed}
+              aria-label="Show steps panel"
+              title="Show steps panel"
+              className="flex h-full w-full flex-col items-center gap-2 pt-3 text-neutral-400 transition-colors hover:bg-neutral-50 hover:text-neutral-700"
+            >
+              <ChevronLeftIcon className="h-3.5 w-3.5 rotate-180" />
+            </button>
+          ) : (
+            <>
+              <LeftColumnTabs tab={leftTab} onChange={setLeftTab} onCollapse={toggleLeftCollapsed} />
+              <div className="min-h-0 flex-1">
+                {leftTab === "palette" ? (
+                  <NodePalette onAdd={addNode} hasTrigger={hasTrigger} disabled={locked} />
+                ) : (
+                  <ResourcesPanel
+                    nodes={nodes.filter((candidate): candidate is BuilderNode => !isEndNode(candidate))}
+                    onSelectNode={setSelectedId}
+                    onAdd={addNode}
+                    disabled={locked}
+                  />
+                )}
+              </div>
+            </>
+          )}
         </div>
 
-        <div className="relative h-full overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-black/5">
+        <div
+          ref={canvasCardRef}
+          className={
+            isFullscreen
+              ? "relative h-full w-full bg-white"
+              : "relative h-full overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-black/5"
+          }
+        >
           <ReactFlow<CanvasNode>
             nodes={decoratedNodes}
             edges={decoratedEdges}
@@ -605,17 +753,61 @@ function BuilderInner({
             elementsSelectable
             deleteKeyCode={locked ? null : ["Backspace", "Delete"]}
             fitView
+            fitViewOptions={{ padding: 0.2 }}
             // Bounded so a stray trackpad pinch cannot leave an admin
             // looking at a blank grey field with no way back.
             minZoom={0.3}
             maxZoom={1.75}
-            proOptions={{ hideAttribution: false }}
+            // Permitted under React Flow's license — see their own docs
+            // on proOptions.hideAttribution. Only hidden here; nowhere
+            // else in this app embeds React Flow, so there is nothing
+            // else this could accidentally remove attribution from.
+            proOptions={{ hideAttribution: true }}
           >
-            <Background gap={16} />
-            {/* Zoom in/out, fit and the interactivity toggle. */}
-            <Controls showInteractive={false} />
-            <MiniMap pannable zoomable className="!hidden sm:!block" />
+            {/* A smaller, quieter dot grid than the library default —
+                barely-there at rest, so it reads as graph paper texture
+                rather than competing with the nodes sitting on it. */}
+            <Background gap={20} size={1.5} color="#e2e8f0" />
+            {/* Zoom in/out, fit-view and the interactivity toggle.
+                fitViewOptions gives the built-in fit-view button both a
+                real animation (duration) instead of an abrupt jump, and
+                enough padding that a Decision diamond's own corners or a
+                Loop's body sitting right at the graph's edge never
+                render flush against — or clipped by — the canvas
+                border. */}
+            <Controls showInteractive={false} fitViewOptions={{ duration: 400, padding: 0.2 }} />
+            {/* Tinted to the app's own blue rather than the library
+                default grey, and only shown once there is more than one
+                node to need it for — a single trigger-to-End line gets
+                nothing from a map of itself. */}
+            {decoratedNodes.length > 1 ? (
+              <MiniMap
+                pannable
+                zoomable
+                nodeColor="#93c5fd"
+                nodeStrokeColor="#2563eb"
+                maskColor="rgba(37, 99, 235, 0.06)"
+                className="!hidden !rounded-lg !border !border-neutral-200 sm:!block"
+              />
+            ) : null}
           </ReactFlow>
+
+          {/* FULLSCREEN TOGGLE — top-right, the corner every video
+              player/slide deck/board tool already trains people to look
+              for one in, rather than folded into the bottom-left cluster
+              with zoom/fit (which is about the viewport WITHIN the
+              canvas, not the canvas's own size on screen). Independent
+              of the two panel-collapse controls: either can be used
+              alone, or together for the actual maximum-space case. */}
+          <button
+            type="button"
+            onClick={toggleFullscreen}
+            aria-label={isFullscreen ? "Exit fullscreen" : "Fullscreen canvas"}
+            title={isFullscreen ? "Exit fullscreen" : "Fullscreen canvas"}
+            className="absolute top-3 right-3 z-10 flex h-8 w-8 items-center justify-center rounded-lg bg-white/90 text-neutral-500 shadow-sm ring-1 ring-black/5 backdrop-blur-sm transition-colors hover:bg-white hover:text-neutral-800"
+          >
+            {isFullscreen ? <MinimizeIcon className="h-4 w-4" /> : <MaximizeIcon className="h-4 w-4" />}
+          </button>
 
           {nodes.length === 0 && !locked ? (
             <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
@@ -635,24 +827,52 @@ function BuilderInner({
           ) : null}
         </div>
 
-        <div className="h-full overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-black/5">
-          <NodeConfigPanel
-            node={selectedNode}
-            allNodes={nodes.filter((candidate): candidate is BuilderNode => !isEndNode(candidate))}
-            team={team}
-            issues={validation.issues}
-            readOnly={locked}
-            onChange={updateNodeConfig}
-            onDelete={deleteNode}
-          />
+        <div className="hidden h-full flex-col overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-black/5 lg:flex">
+          {rightCollapsed ? (
+            <button
+              type="button"
+              onClick={toggleRightCollapsed}
+              aria-label="Show configure panel"
+              title="Show configure panel"
+              className="flex h-full w-full flex-col items-center gap-2 pt-3 text-neutral-400 transition-colors hover:bg-neutral-50 hover:text-neutral-700"
+            >
+              <ChevronRightIcon className="h-3.5 w-3.5 rotate-180" />
+            </button>
+          ) : (
+            <NodeConfigPanel
+              node={selectedNode}
+              allNodes={nodes.filter((candidate): candidate is BuilderNode => !isEndNode(candidate))}
+              team={team}
+              issues={validation.issues}
+              readOnly={locked}
+              onChange={updateNodeConfig}
+              onDelete={deleteNode}
+              onCollapse={toggleRightCollapsed}
+            />
+          )}
         </div>
       </div>
 
-      {/* The palette is hidden at small widths above; this keeps it
-          reachable there rather than making the canvas unusable on a
-          tablet. */}
+      {/* The palette AND the config panel are both hidden at small
+          widths above (the collapse rails only make sense where there
+          are three columns fighting for space) — this keeps both
+          reachable on a phone/tablet rather than making the canvas
+          unusable there, exactly the fallback the palette already had;
+          the config panel gets the identical treatment now instead of
+          being unconditionally squeezed into the mobile stack. */}
       <div className="rounded-2xl bg-white shadow-sm ring-1 ring-black/5 lg:hidden">
         <NodePalette onAdd={addNode} hasTrigger={hasTrigger} disabled={locked} />
+      </div>
+      <div className="rounded-2xl bg-white shadow-sm ring-1 ring-black/5 lg:hidden">
+        <NodeConfigPanel
+          node={selectedNode}
+          allNodes={nodes.filter((candidate): candidate is BuilderNode => !isEndNode(candidate))}
+          team={team}
+          issues={validation.issues}
+          readOnly={locked}
+          onChange={updateNodeConfig}
+          onDelete={deleteNode}
+        />
       </div>
 
       {/* ---- Validation ---- */}
@@ -694,9 +914,17 @@ function BuilderInner({
  *  (Phase 2's variable overview). A plain view toggle, not a route: both
  *  tabs read the identical `nodes` array, so switching never loses or
  *  resets anything. */
-function LeftColumnTabs({ tab, onChange }: { tab: "palette" | "resources"; onChange: (next: "palette" | "resources") => void }) {
+function LeftColumnTabs({
+  tab,
+  onChange,
+  onCollapse,
+}: {
+  tab: "palette" | "resources";
+  onChange: (next: "palette" | "resources") => void;
+  onCollapse: () => void;
+}) {
   return (
-    <div className="flex shrink-0 border-b border-neutral-100 px-2 pt-2">
+    <div className="flex shrink-0 items-center border-b border-neutral-100 px-2 pt-2">
       {(
         [
           { key: "palette" as const, label: "Add steps" },
@@ -714,6 +942,15 @@ function LeftColumnTabs({ tab, onChange }: { tab: "palette" | "resources"; onCha
           {option.label}
         </button>
       ))}
+      <button
+        type="button"
+        onClick={onCollapse}
+        aria-label="Hide steps panel"
+        title="Hide steps panel"
+        className="mb-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-700"
+      >
+        <ChevronLeftIcon className="h-3.5 w-3.5" />
+      </button>
     </div>
   );
 }
@@ -785,6 +1022,62 @@ function toFlowEdges(definition: WorkflowDefinition): Edge[] {
     sourceHandle: edge.branch ?? null,
     label: labelForBranch(nodeById.get(edge.source), edge.branch),
   }));
+}
+
+/**
+ * THE FIX for the End marker vanishing after a save. fromFlow (below)
+ * deliberately never saves an End node — it is "a pure authoring aid,"
+ * not a fifth node kind the engine or validateWorkflow has to know
+ * about. But that means a stored definition can never distinguish "this
+ * output has nothing downstream because the canvas started that way" from
+ * "an admin deleted whatever used to be here" — both are simply an
+ * output with no outgoing edge. Both cases get the same answer: an End
+ * marker, restored here, the moment a definition is turned back into
+ * canvas nodes.
+ *
+ * This is exactly what startWithTrigger already does by hand for a
+ * brand-new canvas (a trigger wired straight to one End node) —
+ * generalized here to every node kind and every one of its outputs, so
+ * a Decision's three outcome branches each still get their own End cap
+ * if nothing was connected to them, not just a trigger's single output.
+ *
+ * Runs ONCE, against the definition's own nodes/edges, before they ever
+ * become live canvas state (see the initialFlow computation above). Once
+ * mounted, a synthesized End node is indistinguishable from one
+ * startWithTrigger created — draggable, deletable, and spliceable via
+ * the edge "+" like any other.
+ */
+function withEndMarkers(nodes: BuilderNode[], edges: Edge[]): { nodes: CanvasNode[]; edges: Edge[] } {
+  const endNodes: CanvasNode[] = [];
+  const endEdges: Edge[] = [];
+
+  for (const node of nodes) {
+    const openOutputs = computeOpenOutputs(node, edges);
+
+    openOutputs.forEach((output, index) => {
+      const endId = `n-end-${node.id}-${output.branch ?? "default"}`;
+      endNodes.push({
+        id: endId,
+        type: AUTOMATION_END_TYPE,
+        // Same rightward offset startWithTrigger uses for its own single
+        // End node; stacked vertically here for a node with more than
+        // one open branch. Not meant to be final — Auto-layout (already
+        // taught, already one click away) re-flows every node, End
+        // markers included, from the edge graph alone.
+        position: { x: node.position.x + 320, y: node.position.y + index * 140 },
+        data: { kind: "end" as const },
+      });
+      endEdges.push({
+        id: `e-end-${endId}`,
+        source: node.id,
+        target: endId,
+        sourceHandle: output.branch,
+        label: labelForBranch(node.data, output.branch),
+      });
+    });
+  }
+
+  return { nodes: [...nodes, ...endNodes], edges: [...edges, ...endEdges] };
 }
 
 /**

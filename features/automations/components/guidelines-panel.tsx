@@ -16,6 +16,11 @@ import { REGISTRY_ENTRIES, SUBJECT_TOKENS } from "../registry/definitions";
  * numbers an admin needs in order to build something that will not be
  * rejected, and not the operational ones (retry budget, claim timeout)
  * that would only tell a probe where the edges are.
+ *
+ * NO OUTER CARD OF ITS OWN — the automations list page wraps this in a
+ * Disclosure (components/shared/disclosure.tsx), which owns the white
+ * card, so this returns bare content that becomes the disclosure's
+ * revealed body instead of a second nested card.
  */
 export function GuidelinesPanel() {
   const byKind = {
@@ -25,7 +30,7 @@ export function GuidelinesPanel() {
   };
 
   return (
-    <div className="flex flex-col gap-5 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-black/5 sm:p-6">
+    <div className="flex flex-col gap-5">
       <section>
         <h3 className="text-xs font-bold tracking-wide text-neutral-500 uppercase">How an automation runs</h3>
         <ul className="mt-2 flex list-disc flex-col gap-1.5 pl-4 text-sm leading-relaxed text-neutral-600">

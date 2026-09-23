@@ -9,6 +9,8 @@ import {
 } from "@/features/customers/lib/get-current-membership";
 import { ListPager } from "@/components/shared/list-pager";
 import { ListSearch } from "@/components/shared/list-search";
+import { Disclosure } from "@/components/shared/disclosure";
+import { PlusIcon } from "@/features/sales-management/components/icons";
 import { AutomationList } from "@/features/automations/components/automation-list";
 import { GuidelinesPanel } from "@/features/automations/components/guidelines-panel";
 import { RunHistory } from "@/features/automations/components/run-history";
@@ -70,8 +72,9 @@ export default async function AutomationsPage({
       {membership.role === "ADMIN" ? (
         <Link
           href="/automations/new"
-          className="min-h-11 rounded-full bg-gradient-to-r from-blue-600 to-violet-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm shadow-blue-600/20 transition-all duration-200 hover:from-blue-700 hover:to-violet-700 hover:shadow-md"
+          className="flex min-h-11 items-center gap-1.5 rounded-full bg-gradient-to-r from-blue-600 to-violet-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm shadow-blue-600/20 transition-all duration-200 hover:from-blue-700 hover:to-violet-700 hover:shadow-md"
         >
+          <PlusIcon className="h-4 w-4" />
           New automation
         </Link>
       ) : null}
@@ -154,8 +157,8 @@ export default async function AutomationsPage({
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_400px]">
         <section className="flex flex-col gap-3">
-          <h2 className="text-xs font-bold tracking-wide text-neutral-500 uppercase">Execution history</h2>
           <RunHistory
+            title="Execution history"
             runs={runs.items}
             nowMs={nowMs}
             queue={queue}
@@ -174,10 +177,18 @@ export default async function AutomationsPage({
         </section>
 
         <section className="flex flex-col gap-3">
-          <h2 className="text-xs font-bold tracking-wide text-neutral-500 uppercase">
-            What automations can do
-          </h2>
-          <GuidelinesPanel />
+          <h2 className="text-xs font-bold tracking-wide text-neutral-500 uppercase">What automations can do</h2>
+          {/* COLLAPSED BY DEFAULT — reference content someone checks
+              occasionally ("what does Skipped mean"), not something a
+              returning admin needs open every visit. The builder's own
+              "Learn" tab already covers deeper education; this is a
+              quick reminder, one click away, not a second destination. */}
+          <Disclosure
+            title="What automations can do"
+            teaser={<p>New here? Learn how automations run and what each status means.</p>}
+          >
+            <GuidelinesPanel />
+          </Disclosure>
         </section>
       </div>
     </div>

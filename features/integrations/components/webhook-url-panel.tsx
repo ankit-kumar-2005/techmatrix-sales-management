@@ -24,11 +24,29 @@ type WebhookUrlPanelProps = {
    *  actually be posting to, not whatever host the admin's browser
    *  happens to be on. This is the REAL, full, unmasked value — the one
    *  thing that must never itself be truncated or altered here, since
-   *  Copy always sends exactly this. */
+   *  Copy always sends exactly this. GENUINELY REAL for a comingSoon
+   *  source too — see coming-soon-sources.ts and
+   *  ensure-coming-soon-integration.ts: the row and its token exist for
+   *  real, ahead of the adapter that will eventually answer on it. */
   webhookUrl: string;
   /** From the Phase 1 source-metadata registry — the ONLY place this
    *  component's copy names a vendor. */
   sourceName: string;
+  /** True for JustDial/Website/Meta — a real, stored URL with nothing
+   *  listening on the other end yet (no adapter, no registry entry —
+   *  see coming-soon-sources.ts's own header). Everything about the URL
+   *  itself (masking, Copy, Regenerate) stays fully real and identical
+   *  to IndiaMART's own panel; only Test Connection short-circuits to a
+   *  friendly, honest "not live yet" message instead of actually
+   *  reaching out, and a "Soon" chip stays visible next to "Private" so
+   *  the structurally-identical panel never reads as actually live. */
+  comingSoon?: boolean;
+  /** Draft setup steps for a comingSoon source, in the same voice as
+   *  IndiaMART's own hardcoded steps below (reused as-is, not
+   *  rewritten, from coming-soon-sources.ts). Ignored when comingSoon
+   *  is false — the one real source keeps its existing richer,
+   *  hand-formatted steps unchanged. */
+  draftSteps?: string[];
 };
 
 const MASK_CHAR = "•";
@@ -101,7 +119,13 @@ type TestOutcome = { ok: boolean; message: string };
  * list to pull, so a sync button would be a control that cannot do
  * anything.
  */
-export function WebhookUrlPanel({ integrationId, webhookUrl, sourceName }: WebhookUrlPanelProps) {
+export function WebhookUrlPanel({
+  integrationId,
+  webhookUrl,
+  sourceName,
+  comingSoon = false,
+  draftSteps,
+}: WebhookUrlPanelProps) {
   const [copied, setCopied] = useState(false);
   const [revealed, setRevealed] = useState(false);
   const [confirmingRegenerate, setConfirmingRegenerate] = useState(false);
@@ -128,6 +152,23 @@ export function WebhookUrlPanel({ integrationId, webhookUrl, sourceName }: Webho
   }
 
   async function handleTest() {
+    // NO REAL FETCH FOR A comingSoon SOURCE. We already know,
+    // deterministically and ahead of time, that nothing is listening —
+    // there is no adapter for this source, so the webhook route 404s
+    // any request before it ever reaches a database call (confirmed
+    // directly against that route's own code, not assumed). Reusing
+    // the real fetch below would just turn that into a confusing "not
+    // responding as expected (status 404)" message, which reads as
+    // broken when nothing actually is. Saying so plainly, instantly,
+    // and without a network round trip is the honest answer here.
+    if (comingSoon) {
+      setTestResult({
+        ok: true,
+        message: `${sourceName} isn't processing leads yet — this URL will start working the moment ${sourceName} is connected. Nothing is broken; there's just nothing listening on the other end yet.`,
+      });
+      return;
+    }
+
     setIsTesting(true);
     setTestResult(null);
     try {
@@ -159,9 +200,21 @@ export function WebhookUrlPanel({ integrationId, webhookUrl, sourceName }: Webho
       <div className="flex flex-col gap-1.5">
         <div className="flex items-center justify-between gap-2">
           <span className="text-sm font-medium text-neutral-700">Webhook Listener URL</span>
-          <span className="inline-flex items-center gap-1 rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-bold tracking-wide text-neutral-500 uppercase">
-            <LockIcon className="h-2.5 w-2.5" aria-hidden="true" />
-            Private
+          <span className="flex items-center gap-1.5">
+            {/* Stays visible in the EXPANDED state too, not just on the
+                collapsed card — this panel is now structurally
+                identical to IndiaMART's real one, so the one thing
+                that must never be lost in that resemblance is "this
+                isn't live yet." */}
+            {comingSoon ? (
+              <span className="inline-flex items-center rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-bold tracking-wide text-neutral-500 uppercase ring-1 ring-inset ring-neutral-200">
+                Soon
+              </span>
+            ) : null}
+            <span className="inline-flex items-center gap-1 rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-bold tracking-wide text-neutral-500 uppercase">
+              <LockIcon className="h-2.5 w-2.5" aria-hidden="true" />
+              Private
+            </span>
           </span>
         </div>
 
@@ -285,8 +338,18 @@ export function WebhookUrlPanel({ integrationId, webhookUrl, sourceName }: Webho
           <form action={formAction} className="flex flex-col gap-4">
             <input type="hidden" name="integration_id" value={integrationId} />
             <p className="text-sm leading-relaxed text-neutral-600">
-              {sourceName} will keep posting to the old URL and those leads will be rejected until you paste the new
-              one into {sourceName}&rsquo;s Push API page. Only do this if the current URL may have been exposed.
+              {comingSoon ? (
+                <>
+                  Nothing is using this URL yet, so this is safe to do at any time — just make sure the new one is
+                  what gets pasted into {sourceName} once that connection is actually built.
+                </>
+              ) : (
+                <>
+                  {sourceName} will keep posting to the old URL and those leads will be rejected until you paste the
+                  new one into {sourceName}&rsquo;s Push API page. Only do this if the current URL may have been
+                  exposed.
+                </>
+              )}
             </p>
             <div className="flex justify-end gap-2">
               <button
@@ -302,12 +365,15 @@ export function WebhookUrlPanel({ integrationId, webhookUrl, sourceName }: Webho
         </Modal>
       ) : null}
 
-      {/* THE SAME THREE STEPS, SAME WORDING, AS BEFORE — only moved from
-          a permanently-visible block into this dialog, opened by the
+      {/* IndiaMART's THREE STEPS, SAME WORDING AS BEFORE — moved from a
+          permanently-visible block into this dialog, opened by the
           "Setup guide" button above. Numbered as small gradient circles,
           the same small pattern already established here (no numbered-
-          step component existed anywhere else in this app to reuse). */}
-      {showGuide ? (
+          step component existed anywhere else in this app to reuse).
+          A comingSoon source takes the OTHER branch below instead —
+          draftSteps, not this hand-formatted content — so nothing about
+          this real, verified copy changes for it. */}
+      {showGuide && !comingSoon ? (
         <Modal
           title={`Set this up in ${sourceName}`}
           subtitle="Three steps in your seller account."
@@ -353,6 +419,40 @@ export function WebhookUrlPanel({ integrationId, webhookUrl, sourceName }: Webho
           <p className="mt-4 text-xs leading-relaxed text-neutral-500">
             {sourceName}&rsquo;s own test/dummy-lead tool on that page is the quickest way to confirm the
             connection — a test lead will appear under Recently captured below.
+          </p>
+        </Modal>
+      ) : null}
+
+      {/* A comingSoon SOURCE'S OWN DRAFT STEPS — the same best-effort
+          content authored for it in coming-soon-sources.ts, reused
+          verbatim rather than rewritten here. Numbered in muted grey,
+          not the real gradient circles above — a quiet visual signal
+          that these are a draft, not verified instructions, on top of
+          the "Soon" chip and the subtitle already saying so in words. */}
+      {showGuide && comingSoon && draftSteps ? (
+        <Modal
+          title={`Set this up in ${sourceName} — draft`}
+          subtitle="A best-effort guess at what this will look like, not verified instructions."
+          icon={
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-neutral-100 text-neutral-500 ring-1 ring-neutral-200">
+              <ShieldCheckIcon className="h-5 w-5" />
+            </span>
+          }
+          onClose={() => setShowGuide(false)}
+        >
+          <ol className="flex flex-col gap-4">
+            {draftSteps.map((step, index) => (
+              <li key={step} className="flex gap-3">
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-neutral-300 text-[11px] font-bold text-white">
+                  {index + 1}
+                </span>
+                <p className="pt-0.5 text-sm leading-relaxed text-neutral-600">{step}</p>
+              </li>
+            ))}
+          </ol>
+          <p className="mt-4 text-xs leading-relaxed text-neutral-500">
+            {sourceName} isn&rsquo;t connected yet, so none of this is actionable today — the real steps may differ
+            once it actually is.
           </p>
         </Modal>
       ) : null}

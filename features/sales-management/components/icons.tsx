@@ -466,3 +466,50 @@ export function CopyIcon(props: SVGProps<SVGSVGElement>) {
     </Icon>
   );
 }
+
+/** Four corner brackets pulling outward — "expand this to fill the
+ *  screen," the standard fullscreen-enter glyph. */
+export function MaximizeIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <path d="M4 9V5a1 1 0 0 1 1-1h4M20 9V5a1 1 0 0 0-1-1h-4M4 15v4a1 1 0 0 0 1 1h4M20 15v4a1 1 0 0 1-1 1h-4" />
+    </Icon>
+  );
+}
+
+/** Four corner brackets pulling inward — the fullscreen-exit twin of
+ *  MaximizeIcon, same four-corner shape read in reverse. */
+export function MinimizeIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <path d="M9 4H5a1 1 0 0 0-1 1v4M15 4h4a1 1 0 0 1 1 1v4M9 20H5a1 1 0 0 1-1-1v-4M15 20h4a1 1 0 0 0 1-1v-4" />
+    </Icon>
+  );
+}
+
+/** A plain "nothing happened here, moving on" mark — deliberately the
+ *  quietest of the run-status icons (a routine skip is expected/benign,
+ *  not a problem), used instead of CheckIcon/CloseIcon so it never
+ *  reads as either a pass or a fail. */
+export function MinusCircleIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M8 12h8" />
+    </Icon>
+  );
+}
+
+/** The one run-status icon deliberately louder than the rest — a real
+ *  safety intervention (a workflow stopped itself to avoid a runaway
+ *  loop or action budget) is a meaningfully different, more
+ *  attention-worthy event than an ordinary skip, and this app has no
+ *  other "something worth a second look" glyph yet. */
+export function AlertTriangleIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <path d="M10.29 3.86 1.82 18a1.5 1.5 0 0 0 1.28 2.25h17.8A1.5 1.5 0 0 0 22.18 18L13.71 3.86a1.5 1.5 0 0 0-2.42 0Z" />
+      <path d="M12 9v4M12 17h.01" />
+    </Icon>
+  );
+}

@@ -51,6 +51,14 @@ export function AutomationList({ items, nowMs, filtered }: AutomationListProps) 
     <ul className="divide-y divide-neutral-100 overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-black/5">
       {items.map((item) => {
         const run = item.last_run_status ? RUN_STYLE[item.last_run_status] : null;
+        // Some automations in this account (created before a distinct
+        // description was ever required, or by an admin who just typed
+        // the name again into both fields) genuinely have description
+        // === name stored — not a rendering bug reproducing empty
+        // state, an identical string in both columns. Either way, a
+        // description line that says nothing the title didn't already
+        // say is never worth its own row.
+        const hasDistinctDescription = Boolean(item.description && item.description.trim() !== item.name.trim());
 
         return (
           <li key={item.id}>
@@ -76,7 +84,7 @@ export function AutomationList({ items, nowMs, filtered }: AutomationListProps) 
                     </span>
                   ) : null}
                 </p>
-                {item.description ? (
+                {hasDistinctDescription ? (
                   <p className="mt-0.5 truncate text-xs text-neutral-500">{item.description}</p>
                 ) : null}
                 <p className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-neutral-500">

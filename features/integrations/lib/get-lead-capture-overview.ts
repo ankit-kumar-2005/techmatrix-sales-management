@@ -1,10 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type {
-  CapturedLead,
-  CustomerIntegration,
-  IntegrationSource,
-  LeadCaptureOverview,
-} from "@/types/integration";
+import type { CapturedLead, CustomerIntegration, LeadCaptureOverview } from "@/types/integration";
 
 /** How many rows the "Recently Captured" feed shows. */
 const RECENT_LIMIT = 8;
@@ -30,7 +25,14 @@ const RECENT_LIMIT = 8;
 export async function getLeadCaptureOverview(
   supabase: SupabaseClient,
   customerId: string,
-  source: IntegrationSource,
+  // A plain string, not IntegrationSource: this is also called for the
+  // three "Soon" sources (see coming-soon-sources.ts), whose whole point
+  // is staying OUTSIDE that closed, adapter-backed union. The query
+  // itself was always a bare .eq("source", source) — never actually
+  // constrained by the TypeScript type — so widening this costs nothing
+  // for the real IndiaMART call site and is what lets this same function
+  // serve both without a parallel copy.
+  source: string,
 ): Promise<LeadCaptureOverview> {
   const { data: integrationRow, error: integrationError } = await supabase
     .from("customer_integrations")
@@ -106,7 +108,7 @@ async function getParticipantIds(supabase: SupabaseClient, integrationId: string
 async function countLeadsSince(
   supabase: SupabaseClient,
   customerId: string,
-  source: IntegrationSource,
+  source: string,
   sinceIso: string,
 ): Promise<number> {
   const { count, error } = await supabase

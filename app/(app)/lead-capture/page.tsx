@@ -8,12 +8,11 @@ import {
 import { getLeadStagesForCustomer } from "@/features/leads/lib/get-lead-stages";
 import { getVisibleTeamDirectory } from "@/features/leads/lib/get-team-directory";
 import { getLeadCaptureOverview } from "@/features/integrations/lib/get-lead-capture-overview";
+import { ensureComingSoonIntegrationExists } from "@/features/integrations/lib/ensure-coming-soon-integration";
 import { getSourceMetadata } from "@/features/integrations/lib/providers/source-metadata";
 import { SourceCard } from "@/features/integrations/components/source-card";
 import { ComingSoonSourceCard } from "@/features/integrations/components/coming-soon-source-card";
 import { COMING_SOON_SOURCES } from "@/features/integrations/lib/providers/coming-soon-sources";
-import { ConnectIndiamartButton } from "@/features/integrations/components/connect-indiamart-button";
-import { WebhookUrlPanel } from "@/features/integrations/components/webhook-url-panel";
 import { CaptureSettingsForm } from "@/features/integrations/components/capture-settings-form";
 import { RecentlyCaptured } from "@/features/integrations/components/recently-captured";
 import { getAppUrl } from "@/lib/app-url";
@@ -83,10 +82,25 @@ export default async function LeadCapturePage() {
     );
   }
 
-  const [overview, stages, owners] = await Promise.all([
+  // PROVISION THE THREE "SOON" ROWS FIRST, before anything reads them —
+  // idempotent (see ensureComingSoonIntegrationExists's own note: a
+  // duplicate insert is a harmless no-op), so this is safe to run on
+  // every single page load, not just the first. This is what makes the
+  // webhook URL each "Soon" card shows genuinely real rather than
+  // illustrative: the row exists, with a real stored token, the moment
+  // any admin ever sees the card — there is no separate "Connect" click
+  // for these three, because there is no decision to make, only
+  // something to have ready ahead of the adapter that will eventually
+  // read it.
+  await Promise.all(
+    COMING_SOON_SOURCES.map((source) => ensureComingSoonIntegrationExists(supabase, membership.customer.id, source.source)),
+  );
+
+  const [overview, stages, owners, ...comingSoonOverviews] = await Promise.all([
     getLeadCaptureOverview(supabase, membership.customer.id, SOURCE),
     getLeadStagesForCustomer(supabase, membership.customer.id),
     getVisibleTeamDirectory(supabase),
+    ...COMING_SOON_SOURCES.map((source) => getLeadCaptureOverview(supabase, membership.customer.id, source.source)),
   ]);
 
   const { integration } = overview;
@@ -105,9 +119,7 @@ export default async function LeadCapturePage() {
   // pasted into a third party's dashboard, so it has to be the stable
   // public origin. lib/app-url.ts carries the full reasoning (it is the
   // same resolution the invitation emails use, and the same
-  // misconfiguration risk). Also handed to ComingSoonSourcesSection
-  // below, purely so its illustrative preview URL's origin looks like a
-  // real one — the only part of that preview that genuinely will be.
+  // misconfiguration risk).
   const appOrigin = getAppUrl();
 
   // The :source segment is integration.source ITSELF — the exact string
@@ -121,13 +133,38 @@ export default async function LeadCapturePage() {
     ? `${appOrigin}/api/webhooks/leads/${integration.source}/${integration.webhook_token}`
     : null;
 
+  // Paired back up with their own metadata, and defensively dropped
+  // (rather than crashing the page) on the one-in-never case the
+  // provisioning insert above failed for a reason other than "already
+  // exists" — see ensureComingSoonIntegrationExists's own error log for
+  // that case.
+  const comingSoonCards = COMING_SOON_SOURCES.map((source, index) => ({
+    source,
+    integration: comingSoonOverviews[index].integration,
+  })).filter(
+    (entry): entry is typeof entry & { integration: NonNullable<(typeof entry)["integration"]> } =>
+      entry.integration !== null,
+  );
+
   return (
     <div className="flex flex-col gap-6">
       {header}
 
       <section className="flex flex-col gap-3">
         <h2 className="text-xs font-bold tracking-wide text-neutral-500 uppercase">Connected sources</h2>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        {/* A SINGLE STACKED COLUMN, not a multi-column grid — each card
+            now expands IN PLACE to show its own real connection details
+            (masked URL, Copy, Test, Setup guide, Regenerate) directly
+            inside itself. In a 3-across grid, one card growing taller
+            than its row-mates either stretches the whole row to match
+            it (an awkward gap under the shorter cards) or, if made to
+            span every column instead, forces its siblings down into a
+            new row — repositioning them, which is exactly what this
+            page must not do. A single column sidesteps the problem
+            entirely: there are no row-mates to misalign with, and an
+            expanding card only ever pushes whatever is already below it
+            further down — normal document flow, not a layout bug. */}
+        <div className="flex flex-col gap-4">
           <SourceCard
             name={metadata.displayName}
             description={metadata.description}
@@ -138,56 +175,52 @@ export default async function LeadCapturePage() {
             weekCount={overview.weekCount}
             lastReceivedAt={overview.lastReceivedAt}
             nowMs={nowMs}
+            integrationId={integration?.id ?? null}
+            webhookUrl={webhookUrl}
           />
-          {/* Three display-only "Soon" cards — JustDial, Website, Meta.
-              No real source, adapter, or token exists for any of them;
-              see coming-soon-sources.ts's own header for why this is
-              deliberately kept out of the real IntegrationSource type. */}
-          {COMING_SOON_SOURCES.map((source) => (
-            <ComingSoonSourceCard key={source.displayName} source={source} />
+          {/* Three "Soon" cards — JustDial, Website, Meta. Each one now
+              has a REAL customer_integrations row and a real webhook
+              token (provisioned above) — a real URL exists for each,
+              even though no adapter or registry entry exists for any
+              of them; see coming-soon-sources.ts's own header for why
+              that's what stays deliberately kept out of the real
+              IntegrationSource type. */}
+          {comingSoonCards.map(({ source, integration: comingSoonIntegration }) => (
+            <ComingSoonSourceCard
+              key={source.source}
+              source={source}
+              integrationId={comingSoonIntegration.id}
+              webhookUrl={`${appOrigin}/api/webhooks/leads/${comingSoonIntegration.source}/${comingSoonIntegration.webhook_token}`}
+            />
           ))}
         </div>
       </section>
 
-      {integration && webhookUrl ? (
-        <>
-          <section className="flex flex-col gap-3">
-            <h2 className="text-xs font-bold tracking-wide text-neutral-500 uppercase">Connection</h2>
-            <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-black/5 sm:p-6">
-              <WebhookUrlPanel integrationId={integration.id} webhookUrl={webhookUrl} sourceName={metadata.displayName} />
-            </div>
-          </section>
-
-          <section className="flex flex-col gap-3">
-            <h2 className="text-xs font-bold tracking-wide text-neutral-500 uppercase">Capture rules</h2>
-            <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-black/5 sm:p-6">
-              <CaptureSettingsForm
-                integrationId={integration.id}
-                stages={stages}
-                assignableUsers={owners}
-                defaultStageId={integration.default_stage_id}
-                assignmentMode={integration.assignment_mode}
-                defaultOwnerId={integration.default_owner_id}
-                participantIds={overview.participantIds}
-              />
-            </div>
-          </section>
-        </>
-      ) : (
+      {/* THE SEPARATE "CONNECTION" SECTION IS GONE — it used to be the
+          one and only place IndiaMART's webhook panel rendered,
+          disconnected from the card that triggered it (there was only
+          ever one card to trigger it from). Every source's own
+          connection details now live inside its own card above.
+          "Capture rules" is unrelated to any single card — it is a
+          page-level setting (which pipeline stage/owner a captured
+          lead lands on) — so it keeps its own section, gated on
+          `integration` existing exactly as before. */}
+      {integration ? (
         <section className="flex flex-col gap-3">
-          <h2 className="text-xs font-bold tracking-wide text-neutral-500 uppercase">Connection</h2>
-          <div className="max-w-2xl rounded-2xl bg-white p-6 shadow-sm ring-1 ring-black/5">
-            <p className="text-sm font-semibold text-neutral-900">{metadata.displayName} isn&rsquo;t connected yet</p>
-            <p className="mt-1.5 text-sm leading-relaxed text-neutral-500">
-              Connecting generates a private webhook URL to paste into {metadata.displayName}&rsquo;s Push API page.
-              Enquiries then arrive as leads automatically — no manual import, and nothing to sync.
-            </p>
-            <div className="mt-5">
-              <ConnectIndiamartButton sourceName={metadata.displayName} />
-            </div>
+          <h2 className="text-xs font-bold tracking-wide text-neutral-500 uppercase">Capture rules</h2>
+          <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-black/5 sm:p-6">
+            <CaptureSettingsForm
+              integrationId={integration.id}
+              stages={stages}
+              assignableUsers={owners}
+              defaultStageId={integration.default_stage_id}
+              assignmentMode={integration.assignment_mode}
+              defaultOwnerId={integration.default_owner_id}
+              participantIds={overview.participantIds}
+            />
           </div>
         </section>
-      )}
+      ) : null}
 
       <section className="flex flex-col gap-3">
         <h2 className="text-xs font-bold tracking-wide text-neutral-500 uppercase">Recently captured</h2>

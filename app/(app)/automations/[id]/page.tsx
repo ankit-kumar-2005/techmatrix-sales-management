@@ -110,8 +110,7 @@ export default async function AutomationDetailPage({
       />
 
       <section className="flex flex-col gap-3">
-        <h2 className="text-xs font-bold tracking-wide text-neutral-500 uppercase">This automation&rsquo;s runs</h2>
-        <RunHistory runs={runs.items} nowMs={nowMs} showAutomationName={false} />
+        <RunHistory title="This automation’s runs" runs={runs.items} nowMs={nowMs} showAutomationName={false} />
         {runs.pageCount > 1 ? (
           <ListPager
             page={runs.page}
