@@ -6,7 +6,7 @@ import { MessageBanner } from "@/components/shared/message-banner";
 import { ContactsIcon } from "@/features/sales-management/components/icons";
 import { createContactAction } from "../actions";
 import { initialContactFormState } from "../form-state";
-import { ContactFormFields, ContactFormSubmitButton } from "./contact-form-fields";
+import { ContactFormFields, ContactFormSubmitButton, type ContactFormPrefill } from "./contact-form-fields";
 import type { TeamDirectoryEntry } from "@/types/lead";
 
 type NewContactDialogProps = {
@@ -18,6 +18,16 @@ type NewContactDialogProps = {
    *  shared refreshToken, so the list re-fetches and the new contact
    *  shows up without the user navigating away and back. */
   onSuccess?: () => void;
+  /** Set by the AI assistant (features/assistant/) to open THIS SAME
+   *  dialog pre-filled — the identical mechanism CreateLeadDialog's own
+   *  aiPrefill/onAiPrefillConsumed and AddTaskDialog's own aiPrefill
+   *  already use, for the same reasons (see either's own doc comment).
+   */
+  aiPrefill?: {
+    prefill?: ContactFormPrefill;
+    defaultLead?: { id: string; label: string };
+  } | null;
+  onAiPrefillConsumed?: () => void;
 };
 
 /**
@@ -33,11 +43,34 @@ export function NewContactDialog({
   currentUserCustomerUserId,
   renderTrigger,
   onSuccess,
+  aiPrefill,
+  onAiPrefillConsumed,
 }: NewContactDialogProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [showSuccessToast, setShowSuccessToast] = useState(false);
   const [state, formAction] = useActionState(createContactAction, initialContactFormState);
   const fieldErrors = state.fieldErrors ?? {};
+
+  // Opens THIS dialog, pre-filled, the moment the AI assistant hands
+  // over a create_contact turn — see AddTaskDialog's own identical
+  // block for the full reasoning (own state during render; the
+  // cross-component notification below has to be a real effect).
+  const [aiOverride, setAiOverride] = useState<NonNullable<NewContactDialogProps["aiPrefill"]> | null>(null);
+  const [lastHandledAiPrefill, setLastHandledAiPrefill] = useState(aiPrefill);
+  if (aiPrefill !== lastHandledAiPrefill) {
+    setLastHandledAiPrefill(aiPrefill);
+    if (aiPrefill) {
+      setAiOverride(aiPrefill);
+      setIsOpen(true);
+    }
+  }
+
+  useEffect(() => {
+    if (aiPrefill) {
+      onAiPrefillConsumed?.();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [aiPrefill]);
 
   // Close-on-success (self-owned isOpen, safe to adjust during render —
   // same reasoning as AddTaskDialog's identical block) and show a toast.
@@ -50,6 +83,7 @@ export function NewContactDialog({
     if (state.success && isOpen) {
       setIsOpen(false);
       setShowSuccessToast(true);
+      setAiOverride(null);
     }
   }
 
@@ -74,12 +108,19 @@ export function NewContactDialog({
 
   return (
     <>
-      {renderTrigger(() => setIsOpen(true))}
+      {renderTrigger(() => {
+        setAiOverride(null);
+        setIsOpen(true);
+      })}
 
       {isOpen ? (
         <Modal
           title="New Contact"
-          subtitle="Add someone you deal with to your directory."
+          subtitle={
+            aiOverride
+              ? "Pre-filled from what you told me — review, correct anything, and add what's missing."
+              : "Add someone you deal with to your directory."
+          }
           icon={
             <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-sky-50 to-blue-50 text-sky-600 ring-1 ring-sky-100">
               <ContactsIcon className="h-5 w-5" />
@@ -92,6 +133,8 @@ export function NewContactDialog({
               assignableUsers={assignableUsers}
               currentUserCustomerUserId={currentUserCustomerUserId}
               fieldErrors={fieldErrors}
+              prefill={aiOverride?.prefill}
+              defaultLead={aiOverride?.defaultLead}
             />
 
             {state.formError ? <MessageBanner tone="error">{state.formError}</MessageBanner> : null}

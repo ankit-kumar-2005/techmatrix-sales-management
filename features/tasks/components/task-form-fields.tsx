@@ -34,6 +34,13 @@ export function TaskFormSubmitButton({ idleLabel, pendingLabel }: { idleLabel: s
   );
 }
 
+/** Named and exported so a caller outside this component tree — the AI
+ *  assistant's Server Action — can build a value of this exact shape
+ *  without redeclaring it by hand (see ContactFormFields' own
+ *  identically-motivated ContactFormPrefill export). */
+export type TaskFormPrefill = NonNullable<TaskFormFieldsProps["prefill"]>;
+export type TaskAssigneeHint = NonNullable<TaskFormFieldsProps["assigneeHint"]>;
+
 type TaskFormFieldsProps = {
   /** The caller's own hierarchy-visible teammates
    *  (getVisibleTeamDirectory) — ADMIN gets everyone in the customer,

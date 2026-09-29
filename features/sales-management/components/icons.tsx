@@ -513,3 +513,32 @@ export function AlertTriangleIcon(props: SVGProps<SVGSVGElement>) {
     </Icon>
   );
 }
+
+/** The AI assistant's own launcher/message glyph — a chat bubble, not
+ *  the animated-avatar reference this feature was explicitly asked not
+ *  to imitate. */
+export function ChatBubbleIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <path d="M21 12a8 8 0 1 1-3.5-6.6" />
+      <path d="M21 3v6h-6" />
+    </Icon>
+  );
+}
+
+export function MicrophoneIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <rect x="9" y="2" width="6" height="12" rx="3" />
+      <path d="M5 10a7 7 0 0 0 14 0M12 21v-4" />
+    </Icon>
+  );
+}
+
+export function SendIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <path d="m3 11 18-8-8 18-2-8-8-2Z" />
+    </Icon>
+  );
+}

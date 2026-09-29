@@ -30,6 +30,12 @@ export function ContactFormSubmitButton({ idleLabel, pendingLabel }: { idleLabel
   );
 }
 
+/** Named and exported (rather than left as an inline object literal
+ *  type) purely so a caller outside this component tree — the AI
+ *  assistant's Server Action — can build a value of this exact shape
+ *  without redeclaring it by hand and risking drift. */
+export type ContactFormPrefill = NonNullable<ContactFormFieldsProps["prefill"]>;
+
 type ContactFormFieldsProps = {
   /** The caller's own hierarchy-visible teammates (getVisibleTeamDirectory)
    *  — ADMIN gets everyone in the customer, everyone else gets themselves
@@ -63,6 +69,28 @@ type ContactFormFieldsProps = {
     owner_id: string;
   };
   lockedLeadLabel?: string;
+  /**
+   * CREATE-MODE prefill — deliberately NOT defaultValues, the exact
+   * same distinction TaskFormFields' own `prefill` prop documents:
+   * defaultValues is the edit-mode switch (it locks the Lead field to
+   * read-only text and requires an owner_id already on the row), which
+   * an AI-assisted NEW contact must not trigger — the Lead is still the
+   * field a human has to actively choose (see defaultLead below), and
+   * Owner must stay untouched and defaulted to the caller, exactly as
+   * on a fully blank form.
+   */
+  prefill?: {
+    name?: string;
+    company?: string | null;
+    title?: string | null;
+    email?: string | null;
+    phone?: string | null;
+  };
+  /** Preselects the Lead field in CREATE mode only (ignored — and does
+   *  nothing — when defaultValues is set, matching TaskFormFields' own
+   *  defaultLead) — the same shared LeadSearchSelect prop Task's own
+   *  create form already uses. */
+  defaultLead?: { id: string; label: string };
 };
 
 export function ContactFormFields({
@@ -71,6 +99,8 @@ export function ContactFormFields({
   fieldErrors,
   defaultValues,
   lockedLeadLabel,
+  prefill,
+  defaultLead,
 }: ContactFormFieldsProps) {
   // Same disambiguation logic the Owner column/picker use for Leads and
   // the Assign field uses for Tasks — computed here from the raw
@@ -86,7 +116,7 @@ export function ContactFormFields({
           required
           variant="filled"
           placeholder="e.g. Ravi Deshmukh"
-          defaultValue={defaultValues?.name}
+          defaultValue={defaultValues?.name ?? prefill?.name}
           error={fieldErrors.name}
         />
 
@@ -96,7 +126,7 @@ export function ContactFormFields({
             name="company"
             variant="filled"
             placeholder="e.g. Vindhya Precision Manufacturing"
-            defaultValue={defaultValues?.company ?? undefined}
+            defaultValue={defaultValues?.company ?? prefill?.company ?? undefined}
             error={fieldErrors.company}
           />
           <FormField
@@ -104,7 +134,7 @@ export function ContactFormFields({
             name="title"
             variant="filled"
             placeholder="e.g. COO"
-            defaultValue={defaultValues?.title ?? undefined}
+            defaultValue={defaultValues?.title ?? prefill?.title ?? undefined}
             error={fieldErrors.title}
           />
         </div>
@@ -116,7 +146,7 @@ export function ContactFormFields({
             type="email"
             variant="filled"
             placeholder="name@company.com"
-            defaultValue={defaultValues?.email ?? undefined}
+            defaultValue={defaultValues?.email ?? prefill?.email ?? undefined}
             error={fieldErrors.email}
           />
           <FormField
@@ -125,7 +155,7 @@ export function ContactFormFields({
             type="tel"
             variant="filled"
             placeholder="e.g. +91 98765 43210"
-            defaultValue={defaultValues?.phone ?? undefined}
+            defaultValue={defaultValues?.phone ?? prefill?.phone ?? undefined}
             error={fieldErrors.phone}
           />
         </div>
@@ -165,6 +195,7 @@ export function ContactFormFields({
             id="contact-lead"
             name="lead_id"
             required
+            defaultLead={defaultLead}
             error={fieldErrors.lead_id}
             helperText="Every contact must be linked to a lead. Independent from Owner below."
           />

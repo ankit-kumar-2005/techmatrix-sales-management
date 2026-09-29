@@ -8,7 +8,7 @@ import {
 import { getLeadsForCustomer } from "@/features/leads/lib/get-leads";
 import { getLeadStagesForCustomer } from "@/features/leads/lib/get-lead-stages";
 import { getVisibleTeamDirectory } from "@/features/leads/lib/get-team-directory";
-import { CreateLeadDialog } from "@/features/leads/components/create-lead-dialog";
+import { LeadCreationControls } from "@/features/leads/components/lead-creation-controls";
 import { KpiCards, type KpiCardData } from "@/features/leads/components/kpi-cards";
 import { LeadsByStage } from "@/features/leads/components/leads-by-stage";
 import { PipelineView } from "@/features/leads/components/pipeline-view";
@@ -172,7 +172,7 @@ export default async function SalesManagementPage() {
             Every open deal for {membership.customer.company_name ?? "your organization"}, in one place.
           </p>
         </div>
-        <CreateLeadDialog
+        <LeadCreationControls
           stages={activeStages}
           owners={owners}
           role={membership.role}

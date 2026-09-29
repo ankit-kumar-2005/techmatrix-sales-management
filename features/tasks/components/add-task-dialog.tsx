@@ -7,7 +7,7 @@ import { MessageBanner } from "@/components/shared/message-banner";
 import { TasksIcon } from "@/features/sales-management/components/icons";
 import { createTaskAction } from "../actions";
 import { initialTaskFormState } from "../form-state";
-import { TaskFormFields, TaskFormSubmitButton } from "./task-form-fields";
+import { TaskFormFields, TaskFormSubmitButton, type TaskAssigneeHint, type TaskFormPrefill } from "./task-form-fields";
 import type { TeamDirectoryEntry } from "@/types/lead";
 
 type AddTaskDialogProps = {
@@ -52,6 +52,26 @@ type AddTaskDialogProps = {
    *  wrong when the dialog was opened from a meeting note that has no
    *  lead attached yet. */
   subtitle?: string;
+  /** Set by the AI assistant (features/assistant/) to open THIS SAME
+   *  dialog pre-filled, instead of it building a second task-creation
+   *  form. Bundles everything a create_task turn can produce —
+   *  prefill/defaultLead/assigneeHint/title/subtitle together, since
+   *  they all need to change atomically for one open. A new object
+   *  (even one with identical values) opens the dialog again — see
+   *  CreateLeadDialog's own aiPrefill for why identity, not a value
+   *  comparison, is what has to drive this. Undefined/null has no
+   *  effect: renderTrigger's own call is still what opens this
+   *  dialog for every existing caller. */
+  aiPrefill?: {
+    prefill?: TaskFormPrefill;
+    defaultLead?: { id: string; label: string };
+    assigneeHint?: TaskAssigneeHint;
+    title?: string;
+    subtitle?: string;
+  } | null;
+  /** Called once aiPrefill has been consumed (the dialog has opened
+   *  with it) — see CreateLeadDialog's own identical prop for why. */
+  onAiPrefillConsumed?: () => void;
 };
 
 /**
@@ -73,11 +93,41 @@ export function AddTaskDialog({
   prefill,
   assigneeHint,
   subtitle = "Create a follow-up action for this lead.",
+  aiPrefill,
+  onAiPrefillConsumed,
 }: AddTaskDialogProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [showSuccessToast, setShowSuccessToast] = useState(false);
   const [state, formAction] = useActionState(createTaskAction, initialTaskFormState);
   const fieldErrors = state.fieldErrors ?? {};
+
+  // Opens THIS dialog, pre-filled, the moment the AI assistant hands
+  // over a create_task turn — own state only, safe to adjust during
+  // render (see CreateLeadDialog's own aiPrefill for the full
+  // reasoning, including why the cross-component onAiPrefillConsumed
+  // notification below has to be a real effect instead).
+  const [aiOverride, setAiOverride] = useState<NonNullable<AddTaskDialogProps["aiPrefill"]> | null>(null);
+  const [lastHandledAiPrefill, setLastHandledAiPrefill] = useState(aiPrefill);
+  if (aiPrefill !== lastHandledAiPrefill) {
+    setLastHandledAiPrefill(aiPrefill);
+    if (aiPrefill) {
+      setAiOverride(aiPrefill);
+      setIsOpen(true);
+    }
+  }
+
+  useEffect(() => {
+    if (aiPrefill) {
+      onAiPrefillConsumed?.();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [aiPrefill]);
+
+  const effectivePrefill = aiOverride?.prefill ?? prefill;
+  const effectiveDefaultLead = aiOverride?.defaultLead ?? defaultLead;
+  const effectiveAssigneeHint = aiOverride?.assigneeHint ?? assigneeHint;
+  const effectiveTitle = aiOverride?.title ?? title;
+  const effectiveSubtitle = aiOverride?.subtitle ?? subtitle;
 
   // Close-on-success (self-owned isOpen, safe to adjust during render —
   // see the file-level comment) and show a toast, matching
@@ -92,6 +142,7 @@ export function AddTaskDialog({
     if (state.success && isOpen) {
       setIsOpen(false);
       setShowSuccessToast(true);
+      setAiOverride(null);
     }
   }
 
@@ -124,12 +175,19 @@ export function AddTaskDialog({
 
   return (
     <>
-      {renderTrigger(() => setIsOpen(true))}
+      {renderTrigger(() => {
+        // A blank (or caller-supplied, non-AI) form every time this
+        // specific trigger opens the dialog, even right after an
+        // AI-prefilled open — same reasoning as CreateLeadDialog's own
+        // "New Lead" button explicitly clearing its aiPrefill override.
+        setAiOverride(null);
+        setIsOpen(true);
+      })}
 
       {isOpen ? (
         <Modal
-          title={title}
-          subtitle={subtitle}
+          title={effectiveTitle}
+          subtitle={effectiveSubtitle}
           icon={
             <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-sky-50 to-blue-50 text-sky-600 ring-1 ring-sky-100">
               <TasksIcon className="h-5 w-5" />
@@ -142,9 +200,9 @@ export function AddTaskDialog({
               assignableUsers={assignableUsers}
               currentUserCustomerUserId={currentUserCustomerUserId}
               fieldErrors={fieldErrors}
-              defaultLead={defaultLead}
-              prefill={prefill}
-              assigneeHint={assigneeHint}
+              defaultLead={effectiveDefaultLead}
+              prefill={effectivePrefill}
+              assigneeHint={effectiveAssigneeHint}
             />
 
             {state.formError ? <MessageBanner tone="error">{state.formError}</MessageBanner> : null}

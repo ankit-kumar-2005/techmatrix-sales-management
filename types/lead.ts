@@ -64,6 +64,37 @@ export type Lead = {
   updated_at: string;
 };
 
+/**
+ * What the AI-assisted lead creation flow returns, before a human has
+ * reviewed or saved anything — same two-outcome shape as
+ * AiGenerationResult (types/automation.ts), minus that one's third
+ * "UNSUPPORTED" branch: extracting a lead's details has no equivalent
+ * of "asked for a capability that doesn't exist," only "clear" or
+ * "missing the one thing required."
+ *
+ * "lead" mirrors a SUBSET of LeadFormDefaultValues
+ * (features/leads/components/lead-form-fields.tsx) field-for-field —
+ * deliberately excluding whatsapp_phone, address, expected_close_date,
+ * stage_id and owner_id, none of which a transcript states as a
+ * knowable fact (see extract-lead.ts's own header for why each is
+ * left for the human reviewing the pre-filled form, exactly as on a
+ * blank manual entry).
+ */
+export type LeadExtractionResult =
+  | {
+      status: "READY";
+      lead: {
+        contact_name: string | null;
+        company: string | null;
+        email: string | null;
+        phone: string | null;
+        deal_value: number | null;
+        source: string | null;
+        next_step: string | null;
+      };
+    }
+  | { status: "NEEDS_CLARIFICATION"; questions: string[] };
+
 /** Row shape returned by the get_customer_team_directory() RPC. */
 export type TeamDirectoryEntry = {
   customer_user_id: string;

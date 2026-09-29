@@ -151,6 +151,39 @@ export async function getContactsPage(
   return { contacts, totalCount: count ?? 0, leadLabels };
 }
 
+/**
+ * Server-side only: every contact linked to ONE specific lead — the
+ * "related contacts" half of the AI assistant's lead-detail view
+ * (features/assistant/). No existing function supports this filter:
+ * getContactsPage's own doc comment explicitly says lead-scoped
+ * filtering was removed ("no longer a way to filter by a specific lead
+ * without matching its name/company as text, by design"), and that
+ * text-search route would false-positive on any OTHER lead sharing
+ * similar name/company text — not a real lead_id filter. This is a new,
+ * narrow query, but not a new or parallel MECHANISM: same RLS-respecting
+ * `supabase` client, same table, same `.eq("customer_id", ...)`
+ * belt-and-suspenders alongside RLS every other query in this file
+ * already uses.
+ */
+export async function getContactsForLead(
+  supabase: SupabaseClient,
+  customerId: string,
+  leadId: string,
+): Promise<ContactListItem[]> {
+  const { data, error } = await supabase
+    .from("contacts")
+    .select("id, lead_id, owner_id, name, company, title, email, phone, tags")
+    .eq("customer_id", customerId)
+    .eq("lead_id", leadId)
+    .order("created_at", { ascending: false });
+
+  if (error || !data) {
+    return [];
+  }
+
+  return data as ContactListItem[];
+}
+
 const DUPLICATE_CANDIDATE_LIMIT = 300;
 
 /** What duplicate-detection.ts's own matching (name/company/title/email/

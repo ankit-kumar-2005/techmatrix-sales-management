@@ -29,6 +29,32 @@ export async function getTasksForCustomer(supabase: SupabaseClient, customerId: 
 }
 
 /**
+ * Server-side only: every task linked to ONE specific lead — the
+ * "related tasks" half of the AI assistant's lead-detail view
+ * (features/assistant/). Same reasoning as Contacts' own
+ * getContactsForLead: no existing function exposes a plain `lead_id`
+ * filter (getTasksBucketPage's own search only reaches a lead by
+ * ilike-matching its name/company text, not an exact id), so this is a
+ * new, narrow query — not a new mechanism, the same RLS-respecting
+ * `supabase` client and the same table every other function here
+ * already queries.
+ */
+export async function getTasksForLead(supabase: SupabaseClient, customerId: string, leadId: string): Promise<Task[]> {
+  const { data, error } = await supabase
+    .from("tasks")
+    .select("*")
+    .eq("customer_id", customerId)
+    .eq("lead_id", leadId)
+    .order("due_date", { ascending: true });
+
+  if (error || !data) {
+    return [];
+  }
+
+  return data as Task[];
+}
+
+/**
  * A due-date BUCKET only — no longer conflated with status. Status
  * (All/Pending/Completed) and due date (All/Today/Overdue/Upcoming) are
  * two INDEPENDENT filter dimensions: a Completed task due yesterday is

@@ -202,6 +202,47 @@ export const createLeadSchema = z.object(leadFieldsShape);
 
 export type CreateLeadInput = z.infer<typeof createLeadSchema>;
 
+// -------------------------------------------------------------------
+// AI-assisted lead creation (paste a transcript/email, extraction
+// pre-fills the SAME form above — see features/leads/lib/extract-lead.ts)
+// -------------------------------------------------------------------
+
+/** A call transcript or email is a page of text, not a document — same
+ *  reasoning and the same limit as Meeting Notes' own
+ *  MEETING_NOTES_MAX_LENGTH (features/meeting-notes/constants.ts): a
+ *  cost-and-abuse cap on a feature any signed-in member can invoke, not
+ *  a model context limit. Kept here rather than in
+ *  features/leads/lib/extract-lead.ts for the identical reason that
+ *  module documents for its own constants file: the client textarea
+ *  needs this number too, and that module reads
+ *  process.env.OPENROUTER_API_KEY — an import edge this schemas module,
+ *  which is already safely imported by client components ("use client"
+ *  lead-form-fields.tsx), must never carry. */
+export const LEAD_EXTRACTION_MAX_LENGTH = 8000;
+
+/** Answers to clarifying questions, appended as extra context on a
+ *  re-run — see extractLeadAction. Same cap as the transcript itself;
+ *  this is still just pasted/typed text, not a second document. */
+const LEAD_EXTRACTION_CLARIFICATION_MAX_LENGTH = 2000;
+
+export const extractLeadInputSchema = z.object({
+  transcript: z
+    .string()
+    .trim()
+    .min(1, "Paste a call transcript or email to extract from.")
+    .max(LEAD_EXTRACTION_MAX_LENGTH, "This is too long to analyze. Please shorten it and try again."),
+  // Absent on the first attempt; present only when re-submitting after
+  // answering NEEDS_CLARIFICATION's own questions.
+  clarification_context: z
+    .string()
+    .trim()
+    .max(LEAD_EXTRACTION_CLARIFICATION_MAX_LENGTH)
+    .optional()
+    .transform((value) => (value ? value : undefined)),
+});
+
+export type ExtractLeadInput = z.infer<typeof extractLeadInputSchema>;
+
 /**
  * Editing a lead validates every field exactly like creating one — built
  * from the same leadFieldsShape object, not a re-typed copy — plus the

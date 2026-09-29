@@ -12,13 +12,15 @@ import {
 } from "@/features/customers/lib/get-current-membership";
 import { searchLeadsForPicker, type LeadSearchResult } from "./lib/search-leads";
 import { getLeadLabelsByIds, type LeadLabel } from "./lib/get-lead-labels";
+import { extractLead } from "./lib/extract-lead";
 import {
   createLeadSchema,
   createLeadStageSchema,
+  extractLeadInputSchema,
   updateLeadSchema,
   updateLeadStageSchema,
 } from "./schemas";
-import type { LeadFormState } from "./form-state";
+import type { LeadExtractionFormState, LeadFormState } from "./form-state";
 import type { LeadStageFormState } from "./stage-form-state";
 
 /**
@@ -187,6 +189,84 @@ export async function createLeadAction(
   revalidatePath("/sales-management");
   revalidatePath("/forecast");
   return { success: true };
+}
+
+/** Built separately for the one failure worth distinguishing — same
+ *  reasoning and same detection as Meeting Notes' own
+ *  describeAllTiersFailed() (features/meeting-notes/actions.ts):
+ *  "every tier is merely busy, try again shortly" and "the models could
+ *  not produce a usable result for this input" call for different user
+ *  behavior, and the attempt trace (model ids + status categories,
+ *  never provider prose or the pasted text) is what tells them apart. */
+function describeAllTiersFailed(attempts: string[]): string {
+  const everyTierThrottled =
+    attempts.length > 0 && attempts.every((line) => line.includes("rate-limited") || line.includes("timed out"));
+
+  if (everyTierThrottled) {
+    return "Every AI model is busy or rate-limited right now. Please wait a minute and try again, or add this lead manually below.";
+  }
+
+  return "The AI couldn't produce a usable result for this text, even after retrying with a different model. Nothing was extracted — try rephrasing it, or add this lead manually below.";
+}
+
+/**
+ * AI-assisted lead creation: extract a lead's details from a pasted
+ * call transcript or email, and hand the result straight back to the
+ * client. THIS ACTION NEVER WRITES TO `leads` — see extract-lead.ts's
+ * own header for the full reasoning. The only thing that reaches the
+ * database is whatever the human explicitly submits afterward, through
+ * the existing, unmodified createLeadAction above.
+ *
+ * Same auth/tenancy guard as every other action here: a session and an
+ * active membership are required (this spends a shared, billable API
+ * key), but this is deliberately NOT role-gated beyond that — creating
+ * a lead manually isn't admin-only, so creating one with AI assistance
+ * isn't either.
+ */
+export async function extractLeadAction(
+  _prevState: LeadExtractionFormState,
+  formData: FormData,
+): Promise<LeadExtractionFormState> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  const membership = await getCurrentMembership(supabase, user.id);
+  if (!membership) {
+    redirect(await getNoMembershipRedirect(supabase, user.id));
+  }
+
+  const submittedTranscript = typeof formData.get("transcript") === "string" ? (formData.get("transcript") as string) : "";
+
+  const parsed = extractLeadInputSchema.safeParse({
+    transcript: formData.get("transcript"),
+    clarification_context: formData.get("clarification_context"),
+  });
+  if (!parsed.success) {
+    return { fieldErrors: getFieldErrors(parsed.error), transcript: submittedTranscript };
+  }
+
+  const result = await extractLead(parsed.data.transcript, parsed.data.clarification_context);
+
+  if (!result.ok) {
+    const message =
+      result.reason === "not_configured"
+        ? "AI lead creation isn't configured on this deployment. You can still add this lead manually below."
+        : describeAllTiersFailed(result.attempts);
+
+    return { formError: message, transcript: parsed.data.transcript };
+  }
+
+  // Logged as a category only — never the pasted transcript, never the
+  // extracted contact details, both of which can carry customer detail.
+  console.log(`[leads:ai] extraction for customer ${membership.customer.id} returned ${result.value.status}.`);
+
+  return { result: result.value, transcript: parsed.data.transcript };
 }
 
 /**
