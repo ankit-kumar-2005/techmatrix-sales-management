@@ -8,6 +8,7 @@ import { BRAND_MARK_HEIGHT, BRAND_MARK_SRC, BRAND_MARK_WIDTH, BRAND_NAME } from 
 import {
   AutomationsIcon,
   BuildingIcon,
+  ChatBubbleIcon,
   CatalogIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -17,6 +18,7 @@ import {
   MeetingNotesIcon,
   PipelineIcon,
   SettingsIcon,
+  ShieldCheckIcon,
   TasksIcon,
   TeamIcon,
   UserPlusIcon,
@@ -51,6 +53,8 @@ const NAV_ITEMS: NavItem[] = [
 const SETTINGS_ITEMS: LinkedNavItem[] = [
   { label: "Company Information", icon: BuildingIcon, href: "/settings/company-information" },
   { label: "Add User", icon: UserPlusIcon, href: "/settings/add-user" },
+  { label: "AI Connections", icon: ShieldCheckIcon, href: "/settings/ai-connections" },
+  { label: "My AI Connections", icon: ChatBubbleIcon, href: "/settings/my-ai-connections" },
   { label: "Profile", icon: ContactsIcon, href: "/settings/profile" },
 ];
 

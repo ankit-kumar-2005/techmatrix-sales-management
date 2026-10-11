@@ -70,3 +70,29 @@ export type CurrentMembership = {
    *  designation, not a stored role. See CLAUDE.md / multi-tenant-security. */
   isPrimaryAdmin: boolean;
 };
+
+/**
+ * Who is performing a domain write, as the domain services in
+ * features/leads|tasks|contacts/lib/*-service.ts need it. Always built
+ * SERVER-SIDE from a verified session plus the live membership row —
+ * by a Server Action from the cookie session, or by the MCP server from
+ * the bearer token — never from anything a client sent.
+ */
+export type DomainActor = {
+  /** auth.users id */
+  userId: string;
+  customerId: string;
+  /** customer_users id */
+  customerUserId: string;
+  role: CustomerRole;
+};
+
+/** The one result shape every domain write returns. Each caller maps it
+ *  to its own surface (form state for Server Actions, an MCP tool error
+ *  for the MCP server); the messages are the exact strings the UI has
+ *  always shown. `not_found` is used both when a record does not exist
+ *  and when RLS hides it — the two are deliberately indistinguishable. */
+export type DomainWriteResult =
+  | { ok: true; id: string | null }
+  | { ok: false; kind: "invalid"; fieldErrors: Record<string, string> }
+  | { ok: false; kind: "not_found" | "forbidden" | "conflict" | "failed"; message: string };

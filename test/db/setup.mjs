@@ -39,9 +39,33 @@ grant usage on schema auth to anon, authenticated, service_role;
 create table if not exists auth.users (
   id uuid primary key default gen_random_uuid(),
   email text unique,
+  banned_until timestamptz,
   created_at timestamptz not null default now()
 );
 grant select on auth.users to authenticated;
+
+-- Enough of Supabase's auth.sessions for the MCP session-liveness check
+-- (get_my_mcp_context). No grants to authenticated, as on Supabase.
+create table if not exists auth.sessions (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users (id) on delete cascade,
+  not_after timestamptz,
+  created_at timestamptz not null default now()
+);
+
+-- The real auth.jwt() shape: the request's JWT claims as jsonb. The tests
+-- set either the whole claim set (request.jwt.claims) or individual
+-- claims (request.jwt.claim.sub / request.jwt.claim.session_id).
+create or replace function auth.jwt() returns jsonb
+language sql stable as $fn$
+  select coalesce(
+    nullif(current_setting('request.jwt.claims', true), '')::jsonb,
+    jsonb_strip_nulls(jsonb_build_object(
+      'sub', nullif(current_setting('request.jwt.claim.sub', true), ''),
+      'session_id', nullif(current_setting('request.jwt.claim.session_id', true), '')
+    ))
+  );
+$fn$;
 
 -- The real auth.uid() shape: reads the JWT sub claim from the session.
 -- The tests set that claim with set_config to impersonate a user.

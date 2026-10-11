@@ -11,7 +11,9 @@ import { PasswordField } from "./password-field";
 import { MessageBanner } from "@/components/shared/message-banner";
 import { LockIcon, MailIcon } from "@/features/sales-management/components/icons";
 
-export function LoginForm() {
+/** redirectTo is already validated server-side (safeNextPath in
+ *  app/login/page.tsx); absent, login lands on the Pipeline as before. */
+export function LoginForm({ redirectTo }: { redirectTo?: string } = {}) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -73,8 +75,7 @@ export function LoginForm() {
       // serve a stale RSC payload for this auth-gated route right after
       // the session changes, which looked like "login redirects back
       // to signup" even though the account was fine.
-      // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- intentional hard navigation, see comment above
-      window.location.href = "/sales-management";
+      window.location.href = redirectTo ?? "/sales-management";
     } catch {
       setFormError("Something went wrong. Please try again.");
     } finally {

@@ -8,7 +8,9 @@ import {
   getCurrentMembership,
   getNoMembershipRedirect,
 } from "@/features/customers/lib/get-current-membership";
+import { toDomainActor, toFormState } from "@/features/customers/lib/domain-actor";
 import { createContactSchema, updateContactSchema } from "./schemas";
+import { createContact, updateContact } from "./lib/contact-service";
 import {
   getContactsPage,
   getDuplicateCandidates,
@@ -60,28 +62,12 @@ export async function createContactAction(_prevState: ContactFormState, formData
     return { fieldErrors: getFieldErrors(parsed.error) };
   }
 
-  const ownerId = membership.role === "SALES_REP" ? membership.membership.id : parsed.data.owner_id;
-
-  const { error } = await supabase.from("contacts").insert({
-    customer_id: membership.customer.id,
-    lead_id: parsed.data.lead_id,
-    owner_id: ownerId,
-    name: parsed.data.name,
-    company: parsed.data.company ?? null,
-    title: parsed.data.title ?? null,
-    email: parsed.data.email ?? null,
-    phone: parsed.data.phone ?? null,
-    tags: parsed.data.tags,
-    created_by: user.id,
-  });
-
-  if (error) {
-    // Never surface raw Postgres error text (constraint names, internal
-    // schema detail) — see CLAUDE.md Section K. A rejected insert here
-    // usually means the chosen lead isn't in this customer, or the
-    // chosen owner is outside the caller's own visible hierarchy — RLS
-    // silently rejects rather than naming which check failed.
-    return { formError: "Unable to create this contact. The lead or owner may not be available to you." };
+  // SALES_REP owner forcing and the insert live in the shared domain
+  // service (also used by the MCP create_contact tool) — see
+  // features/contacts/lib/contact-service.ts.
+  const result = await createContact(supabase, toDomainActor(user.id, membership), parsed.data);
+  if (!result.ok) {
+    return toFormState(result);
   }
 
   revalidatePath("/contacts");
@@ -126,34 +112,10 @@ export async function updateContactAction(_prevState: ContactFormState, formData
     return { fieldErrors: getFieldErrors(parsed.error) };
   }
 
-  const ownerId = membership.role === "SALES_REP" ? membership.membership.id : parsed.data.owner_id;
-
-  const { data: updated, error } = await supabase
-    .from("contacts")
-    .update({
-      owner_id: ownerId,
-      name: parsed.data.name,
-      company: parsed.data.company ?? null,
-      title: parsed.data.title ?? null,
-      email: parsed.data.email ?? null,
-      phone: parsed.data.phone ?? null,
-      tags: parsed.data.tags,
-    })
-    .eq("id", parsed.data.id)
-    .eq("customer_id", membership.customer.id)
-    .select("id")
-    .maybeSingle();
-
-  if (error) {
-    return { formError: "Unable to update this contact. The owner may not be available to you." };
-  }
-  if (!updated) {
-    // RLS silently excluded the row — the caller can no longer see/edit
-    // this contact (e.g. its owner changed since the page loaded), or it
-    // never belonged to their customer. The database is still the real
-    // boundary even when the UI only ever showed them contacts it
-    // believed they could edit.
-    return { formError: "This contact could not be updated. It may no longer be available to you." };
+  // Shared with the MCP update_contact tool — features/contacts/lib/contact-service.ts.
+  const result = await updateContact(supabase, toDomainActor(user.id, membership), parsed.data);
+  if (!result.ok) {
+    return toFormState(result);
   }
 
   revalidatePath("/contacts");

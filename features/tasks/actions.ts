@@ -8,7 +8,9 @@ import {
   getCurrentMembership,
   getNoMembershipRedirect,
 } from "@/features/customers/lib/get-current-membership";
+import { toDomainActor, toFormState } from "@/features/customers/lib/domain-actor";
 import { createTaskSchema, updateTaskSchema } from "./schemas";
+import { completeTask, createTask, updateTask } from "./lib/task-service";
 import { getTasksBucketPage, type TasksBucketPage, type TasksBucketPageParams } from "./lib/get-tasks";
 import type { TaskFormState } from "./form-state";
 
@@ -51,33 +53,12 @@ export async function createTaskAction(_prevState: TaskFormState, formData: Form
     return { fieldErrors: getFieldErrors(parsed.error) };
   }
 
-  // .select("id") ADDED so the created task can be reported back in
-  // TaskFormState.taskId. Meeting Notes needs it to link the action item
-  // that produced this task; every other caller ignores it. Nothing else
-  // about this insert changed — same columns, same values, same RLS.
-  const { data: created, error } = await supabase
-    .from("tasks")
-    .insert({
-      customer_id: membership.customer.id,
-      lead_id: parsed.data.lead_id,
-      subject: parsed.data.subject,
-      description: parsed.data.description ?? null,
-      priority: parsed.data.priority,
-      due_date: parsed.data.due_date,
-      assigned_to: parsed.data.assigned_to,
-      type: parsed.data.type,
-      created_by: user.id,
-    })
-    .select("id")
-    .maybeSingle();
-
-  if (error) {
-    // Never surface raw Postgres error text (constraint names, internal
-    // schema detail) — see CLAUDE.md Section K. A rejected insert here
-    // usually means the chosen Lead or assignee is outside what the
-    // caller is currently allowed to see/assign — RLS silently rejects
-    // rather than naming which check failed.
-    return { formError: "Unable to create this task. The lead or assignee may not be available to you." };
+  // The insert lives in the shared domain service, which the MCP
+  // create_task tool also calls — see features/tasks/lib/task-service.ts.
+  // It still reports the new id for Meeting Notes' action-item linking.
+  const result = await createTask(supabase, toDomainActor(user.id, membership), parsed.data);
+  if (!result.ok) {
+    return toFormState(result);
   }
 
   revalidatePath("/tasks");
@@ -91,7 +72,7 @@ export async function createTaskAction(_prevState: TaskFormState, formData: Form
   // exists and this is still a success. Only the Meeting Notes caller
   // reads it, and it treats a missing id as "created but not linked",
   // which is recoverable — see MeetingNoteActionItemRow.
-  return { success: true, taskId: created?.id as string | undefined };
+  return { success: true, taskId: result.id ?? undefined };
 }
 
 /**
@@ -135,32 +116,10 @@ export async function updateTaskAction(_prevState: TaskFormState, formData: Form
     return { fieldErrors: getFieldErrors(parsed.error) };
   }
 
-  const { data: updated, error } = await supabase
-    .from("tasks")
-    .update({
-      subject: parsed.data.subject,
-      description: parsed.data.description ?? null,
-      priority: parsed.data.priority,
-      due_date: parsed.data.due_date,
-      assigned_to: parsed.data.assigned_to,
-      type: parsed.data.type,
-      status: parsed.data.status,
-    })
-    .eq("id", parsed.data.id)
-    .eq("customer_id", membership.customer.id)
-    .select("id")
-    .maybeSingle();
-
-  if (error) {
-    return { formError: "Unable to update this task. The assignee may not be available to you." };
-  }
-  if (!updated) {
-    // RLS silently excluded the row — the caller can no longer see/edit
-    // this task (e.g. its assignee changed since the page loaded), or it
-    // never belonged to their customer. The database is still the real
-    // boundary even when the UI only ever showed them tasks it believed
-    // they could edit.
-    return { formError: "This task could not be updated. It may no longer be available to you." };
+  // Shared with the MCP update_task tool — features/tasks/lib/task-service.ts.
+  const result = await updateTask(supabase, toDomainActor(user.id, membership), parsed.data);
+  if (!result.ok) {
+    return toFormState(result);
   }
 
   revalidatePath("/tasks");
@@ -197,19 +156,10 @@ export async function completeTaskAction(taskId: string): Promise<CompleteTaskRe
     redirect(await getNoMembershipRedirect(supabase, user.id));
   }
 
-  const { data, error } = await supabase
-    .from("tasks")
-    .update({ status: "Completed" })
-    .eq("id", taskId)
-    .eq("customer_id", membership.customer.id)
-    .select("id")
-    .maybeSingle();
-
-  if (error) {
-    return { success: false, error: "Unable to complete this task. Please try again." };
-  }
-  if (!data) {
-    return { success: false, error: "This task could not be updated. It may no longer be available to you." };
+  // Shared with the MCP complete_task tool — features/tasks/lib/task-service.ts.
+  const result = await completeTask(supabase, toDomainActor(user.id, membership), taskId);
+  if (!result.ok) {
+    return { success: false, error: "message" in result ? result.message : "Unable to complete this task. Please try again." };
   }
 
   revalidatePath("/tasks");

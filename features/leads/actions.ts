@@ -10,6 +10,8 @@ import {
   getCurrentMembership,
   getNoMembershipRedirect,
 } from "@/features/customers/lib/get-current-membership";
+import { toDomainActor, toFormState } from "@/features/customers/lib/domain-actor";
+import { createLead, updateLead } from "./lib/lead-service";
 import { searchLeadsForPicker, type LeadSearchResult } from "./lib/search-leads";
 import { getLeadLabelsByIds, type LeadLabel } from "./lib/get-lead-labels";
 import { extractLead } from "./lib/extract-lead";
@@ -137,45 +139,12 @@ export async function createLeadAction(
     return { fieldErrors: getFieldErrors(parsed.error) };
   }
 
-  const { data: stage, error: stageError } = await supabase
-    .from("customer_lead_stages")
-    .select("id, status")
-    .eq("id", parsed.data.stage_id)
-    .eq("customer_id", membership.customer.id)
-    .maybeSingle();
-
-  if (stageError || !stage) {
-    return { fieldErrors: { stage_id: "Select a valid stage." } };
-  }
-  if (stage.status !== "Active") {
-    return { fieldErrors: { stage_id: "That stage is no longer active. Please choose another." } };
-  }
-
-  const ownerId = membership.role === "ADMIN" ? (parsed.data.owner_id ?? null) : membership.membership.id;
-
-  // "same as contact number" is resolved authoritatively here, not
-  // trusted from any client-side copy — if checked, whatever the form
-  // submitted for whatsapp_phone is ignored in favor of `phone` itself.
-  const whatsappPhone = parsed.data.whatsapp_same ? parsed.data.phone : (parsed.data.whatsapp_phone ?? null);
-
-  const { error } = await supabase.from("leads").insert({
-    customer_id: membership.customer.id,
-    company: parsed.data.company ?? null,
-    contact_name: parsed.data.contact_name,
-    email: parsed.data.email ?? null,
-    phone: parsed.data.phone,
-    whatsapp_phone: whatsappPhone,
-    address: parsed.data.address ?? null,
-    deal_value: parsed.data.deal_value ?? null,
-    expected_close_date: parsed.data.expected_close_date ?? null,
-    stage_id: parsed.data.stage_id,
-    owner_id: ownerId,
-    source: parsed.data.source ?? null,
-    next_step: parsed.data.next_step ?? null,
-  });
-
-  if (error) {
-    return { formError: "Something went wrong creating the lead. Please try again." };
+  // Stage check, owner forcing, whatsapp resolution and the insert itself
+  // live in the shared domain service, which the MCP create_lead tool
+  // also calls — see features/leads/lib/lead-service.ts.
+  const result = await createLead(supabase, toDomainActor(user.id, membership), parsed.data);
+  if (!result.ok) {
+    return toFormState(result);
   }
 
   // The lead row's own AFTER INSERT trigger has already written any
@@ -322,78 +291,12 @@ export async function updateLeadAction(
     return { fieldErrors: getFieldErrors(parsed.error) };
   }
 
-  const { data: existingLead, error: fetchError } = await supabase
-    .from("leads")
-    .select("id, owner_id, stage_id, closed_at")
-    .eq("id", parsed.data.id)
-    .eq("customer_id", membership.customer.id)
-    .maybeSingle();
-
-  if (fetchError || !existingLead) {
-    return { formError: "Lead not found." };
-  }
-
-  if (existingLead.closed_at) {
-    return { formError: "This lead is closed and cannot be edited." };
-  }
-
-  const isOwnLead = existingLead.owner_id === membership.membership.id;
-  if (membership.role !== "ADMIN" && !isOwnLead) {
-    return { formError: "You don't have permission to edit this lead." };
-  }
-
-  if (parsed.data.stage_id !== existingLead.stage_id) {
-    const { data: stage, error: stageError } = await supabase
-      .from("customer_lead_stages")
-      .select("id, status")
-      .eq("id", parsed.data.stage_id)
-      .eq("customer_id", membership.customer.id)
-      .maybeSingle();
-
-    if (stageError || !stage) {
-      return { fieldErrors: { stage_id: "Select a valid stage." } };
-    }
-    if (stage.status !== "Active") {
-      return { fieldErrors: { stage_id: "That stage is no longer active. Please choose another." } };
-    }
-  }
-
-  const whatsappPhone = parsed.data.whatsapp_same ? parsed.data.phone : (parsed.data.whatsapp_phone ?? null);
-
-  const updatePayload: Record<string, unknown> = {
-    company: parsed.data.company ?? null,
-    contact_name: parsed.data.contact_name,
-    email: parsed.data.email ?? null,
-    phone: parsed.data.phone,
-    whatsapp_phone: whatsappPhone,
-    address: parsed.data.address ?? null,
-    deal_value: parsed.data.deal_value ?? null,
-    expected_close_date: parsed.data.expected_close_date ?? null,
-    stage_id: parsed.data.stage_id,
-    source: parsed.data.source ?? null,
-    next_step: parsed.data.next_step ?? null,
-  };
-
-  if (membership.role === "ADMIN") {
-    updatePayload.owner_id = parsed.data.owner_id ?? null;
-  }
-
-  const { data: updated, error } = await supabase
-    .from("leads")
-    .update(updatePayload)
-    .eq("id", parsed.data.id)
-    .eq("customer_id", membership.customer.id)
-    .select("id")
-    .maybeSingle();
-
-  if (error) {
-    return { formError: "Something went wrong updating the lead. Please try again." };
-  }
-  if (!updated) {
-    // RLS silently excluded the row (e.g. it closed or was reassigned
-    // between the checks above and this statement) — the database is
-    // still the real boundary even when this action's own checks agree.
-    return { formError: "This lead could not be updated. It may have changed since you opened it." };
+  // Closed-lead lock, ownership, stage re-validation and the update
+  // itself live in the shared domain service (also used by the MCP
+  // update_lead tool) — see features/leads/lib/lead-service.ts.
+  const result = await updateLead(supabase, toDomainActor(user.id, membership), parsed.data);
+  if (!result.ok) {
+    return toFormState(result);
   }
 
   revalidatePath("/sales-management");
